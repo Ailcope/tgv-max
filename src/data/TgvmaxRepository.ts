@@ -1,8 +1,10 @@
-import { aggregateByDestination } from "@/domain/availability";
+import { aggregateByDestination, aggregateByOrigin } from "@/domain/availability";
 import type {
   DailyCounts,
   DestinationAvailability,
+  OriginAvailability,
   RangeDestination,
+  RangeOrigin,
   Train,
 } from "@/domain/models";
 import { dateOnly } from "@/lib/dates";
@@ -32,6 +34,11 @@ interface DateCountRow {
 }
 interface DestRangeRow {
   destination: string;
+  trains: number;
+  days: number;
+}
+interface OrigRangeRow {
+  origine: string;
   trains: number;
   days: number;
 }
@@ -91,6 +98,17 @@ export class TgvmaxRepository {
     return aggregateByDestination(rows.map(toTrain));
   }
 
+  /** Every origin with a MAX seat toward one destination on a date, aggregated. */
+  async originsOn(to: string, date: string): Promise<OriginAvailability[]> {
+    const where = and(filters.to(to), filters.onDate(date), filters.maxSeat());
+    const rows = await this.api.all<RawTgvmaxRecord>(
+      where,
+      { select: TRAIN_FIELDS, orderBy: "origine" },
+      3000,
+    );
+    return aggregateByOrigin(rows.map(toTrain));
+  }
+
   /** Every destination reachable with a MAX seat over the whole window (map view). */
   async destinationsRange(from: string): Promise<RangeDestination[]> {
     const where = and(filters.from(from), filters.maxSeat());
@@ -104,6 +122,21 @@ export class TgvmaxRepository {
       3000,
     );
     return rows.map((r) => ({ destination: r.destination, trains: r.trains, days: r.days }));
+  }
+
+  /** Every origin with a MAX seat toward one destination over the whole window (map view). */
+  async originsRange(to: string): Promise<RangeOrigin[]> {
+    const where = and(filters.to(to), filters.maxSeat());
+    const rows = await this.api.all<OrigRangeRow>(
+      where,
+      {
+        groupBy: "origine",
+        select: "origine, count(*) as trains, count(distinct date) as days",
+        orderBy: "trains DESC",
+      },
+      3000,
+    );
+    return rows.map((r) => ({ origin: r.origine, trains: r.trains, days: r.days }));
   }
 
   /** All MAX trains for one O/D across the whole window (round-trip planning). */

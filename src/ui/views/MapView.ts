@@ -9,16 +9,18 @@ import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { hint } from "../components/states";
 import { clear, el, field, select } from "../dom";
-import { ACCENT, createMap, type MapHandle, originIcon } from "../map/MapKit";
+import { ACCENT, createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
 import type { View } from "./View";
 
 interface MapDatum {
-  dest: string;
+  station: string;
   metric: number;
   label: string;
   first?: string;
   fastestMinutes?: number;
 }
+
+type Mode = "from" | "to";
 
 /** Geographic view of reachable destinations over the real rail network. */
 export class MapView implements View {
@@ -28,7 +30,9 @@ export class MapView implements View {
   readonly hint = "vue géographique";
   readonly element: HTMLElement;
 
-  private readonly fromPicker: StationPicker;
+  private readonly picker: StationPicker;
+  private readonly modeSelect: HTMLSelectElement;
+  private readonly stationFieldLabel: HTMLLabelElement;
   private readonly scopeSelect: HTMLSelectElement;
   private readonly dateInput: HTMLInputElement;
   private readonly summary = el("div", { class: "summary" });
@@ -40,11 +44,21 @@ export class MapView implements View {
     private readonly repo: TgvmaxRepository,
     private readonly stations: StationRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, {
+    this.picker = new StationPicker(stations, {
       placeholder: "ex. Paris",
       value: "PARIS (intramuros)",
       onSelect: () => void this.run(),
     });
+    this.modeSelect = select(
+      [
+        ["from", "Depuis une gare"],
+        ["to", "Vers une gare"],
+      ],
+      () => {
+        this.stationFieldLabel.textContent = this.modeSelect.value === "to" ? "Arrivée" : "Départ";
+        void this.run();
+      },
+    );
     this.dateInput = el("input", {
       class: "date-input",
       type: "date",
@@ -65,8 +79,13 @@ export class MapView implements View {
       },
     );
 
+    this.stationFieldLabel = el("label", { class: "f" }, [
+      el("span", { class: "f-lab", text: "Départ" }),
+      this.picker.element,
+    ]);
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
+      field("Mode", this.modeSelect),
+      this.stationFieldLabel,
       field("Période", this.scopeSelect),
       field("Date", this.dateInput),
       el("button", {
@@ -98,46 +117,83 @@ export class MapView implements View {
     if (dateField) dateField.style.display = this.scopeSelect.value === "date" ? "" : "none";
   }
 
+  private mode(): Mode {
+    return this.modeSelect.value as Mode;
+  }
+
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    if (!from) return;
-    const origin = this.stations.get(from);
-    if (!origin) return;
+    const stationName = this.picker.value;
+    if (!stationName) return;
+    const station = this.stations.get(stationName);
+    if (!station) return;
+    const mode = this.mode();
     clear(this.summary).appendChild(hint("Chargement de la carte…"));
     try {
       const byDate = this.scopeSelect.value === "date";
-      const data: MapDatum[] = byDate
-        ? (await this.repo.destinationsOn(from, this.dateInput.value)).map((r) => ({
-            dest: r.destination,
+      const data: MapDatum[] = [];
+      if (mode === "from") {
+        if (byDate) {
+          const rs = await this.repo.destinationsOn(stationName, this.dateInput.value);
+          for (const r of rs) {
+            data.push({
+              station: r.destination,
+              metric: r.trains,
+              label: `${r.trains} trajet(s)`,
+              first: r.firstDeparture,
+              fastestMinutes: r.fastestMinutes,
+            });
+          }
+        } else {
+          const rs = await this.repo.destinationsRange(stationName);
+          for (const r of rs) {
+            data.push({ station: r.destination, metric: r.days, label: `${r.days} jour(s) · ${r.trains} trajet(s)` });
+          }
+        }
+      } else if (byDate) {
+        const rs = await this.repo.originsOn(stationName, this.dateInput.value);
+        for (const r of rs) {
+          data.push({
+            station: r.origin,
             metric: r.trains,
             label: `${r.trains} trajet(s)`,
             first: r.firstDeparture,
             fastestMinutes: r.fastestMinutes,
-          }))
-        : (await this.repo.destinationsRange(from)).map((r) => ({
-            dest: r.destination,
-            metric: r.days,
-            label: `${r.days} jour(s) · ${r.trains} trajet(s)`,
-          }));
+          });
+        }
+      } else {
+        const rs = await this.repo.originsRange(stationName);
+        for (const r of rs) {
+          data.push({ station: r.origin, metric: r.days, label: `${r.days} jour(s) · ${r.trains} trajet(s)` });
+        }
+      }
       this.loaded = true;
-      this.draw(from, origin, data, byDate);
+      this.draw(stationName, station, data, byDate, mode);
     } catch (e) {
       clear(this.summary).appendChild(hint(`Erreur : ${(e as Error).message}`));
     }
   }
 
-  private draw(from: string, origin: Station, data: MapDatum[], byDate: boolean): void {
+  private draw(
+    stationName: string,
+    station: Station,
+    data: MapDatum[],
+    byDate: boolean,
+    mode: Mode,
+  ): void {
     this.handle.routes.clearLayers();
     this.handle.markers.clearLayers();
-    const points: L.LatLngTuple[] = [[origin.lat, origin.lon]];
+    const points: L.LatLngTuple[] = [[station.lat, station.lon]];
     const maxMetric = Math.max(1, ...data.map((d) => d.metric));
 
-    L.marker([origin.lat, origin.lon], { icon: originIcon(), zIndexOffset: 1000 })
+    const anchorIcon = mode === "to" ? destIcon() : originIcon();
+    L.marker([station.lat, station.lon], { icon: anchorIcon, zIndexOffset: 1000 })
       .addTo(this.handle.markers)
-      .bindTooltip(`${prettyStation(from)} · départ`, { direction: "top" });
+      .bindTooltip(`${prettyStation(stationName)} · ${mode === "to" ? "arrivée" : "départ"}`, {
+        direction: "top",
+      });
 
     for (const d of data) {
-      const s = this.stations.get(d.dest);
+      const s = this.stations.get(d.station);
       if (!s) continue;
       points.push([s.lat, s.lon]);
       const marker = L.circleMarker([s.lat, s.lon], {
@@ -148,18 +204,19 @@ export class MapView implements View {
         fillOpacity: 0.9,
       })
         .addTo(this.handle.markers)
-        .bindTooltip(`${prettyStation(d.dest)} · ${d.label}`, { direction: "top" })
+        .bindTooltip(`${prettyStation(d.station)} · ${d.label}`, { direction: "top" })
         .bindPopup(popupHtml(d));
       marker.on("mouseover", () => marker.setStyle({ color: ACCENT, weight: 3 }));
       marker.on("mouseout", () => marker.setStyle({ color: "#fff", weight: 1.5 }));
     }
 
     if (points.length > 1) this.handle.map.fitBounds(points, { padding: [40, 40] });
+    const noun = mode === "to" ? "gare de départ" : "destination";
     clear(this.summary).appendChild(
       el("div", {
         class: "sum-line",
         html:
-          `<b>${data.length}</b> destination${data.length > 1 ? "s" : ""} avec place MAX depuis <b>${prettyStation(from)}</b> · ` +
+          `<b>${data.length}</b> ${noun}${data.length > 1 ? "s" : ""} avec place MAX ${mode === "to" ? "vers" : "depuis"} <b>${prettyStation(stationName)}</b> · ` +
           (byDate ? frDateLong(this.dateInput.value) : "30 prochains jours") +
           (data.length ? "" : ' — <span class="ko">rien trouvé</span>'),
       }),
@@ -173,5 +230,5 @@ const heat = (t: number): string => (t > 0.66 ? "#1a8a3f" : t > 0.33 ? "#4caf50"
 function popupHtml(d: MapDatum): string {
   const dur = d.fastestMinutes ? ` · ${formatDuration(d.fastestMinutes)}` : "";
   const departure = d.first ? `<br>dès ${d.first}${dur}` : "";
-  return `<div class="pop"><b>${prettyStation(d.dest)}</b><br>${d.label}${departure}<br><a href="${SNCF_CONNECT_SEARCH}" target="_blank" rel="noopener">Réserver ↗</a></div>`;
+  return `<div class="pop"><b>${prettyStation(d.station)}</b><br>${d.label}${departure}<br><a href="${SNCF_CONNECT_SEARCH}" target="_blank" rel="noopener">Réserver ↗</a></div>`;
 }

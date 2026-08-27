@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { aggregateByDestination, heatLevel } from "@/domain/availability";
+import { aggregateByDestination, aggregateByOrigin, heatLevel } from "@/domain/availability";
 import type { Train } from "@/domain/models";
 
-const t = (destination: string, departure: string, arrival: string): Train => ({
+const t = (destination: string, departure: string, arrival: string, origin = "PARIS (intramuros)"): Train => ({
   date: "2026-07-04",
   trainNo: "1",
   departure,
   arrival,
   axis: "SUD EST",
-  origin: "PARIS (intramuros)",
+  origin,
   destination,
   hasMaxSeat: true,
 });
@@ -44,5 +44,25 @@ describe("aggregateByDestination", () => {
 
   it("returns an empty array for no trains", () => {
     expect(aggregateByDestination([])).toEqual([]);
+  });
+});
+
+describe("aggregateByOrigin", () => {
+  it("aggregates count, earliest departure and fastest trip, sorted by count", () => {
+    const result = aggregateByOrigin([
+      t("LYON", "09:00", "11:00", "MARSEILLE"),
+      t("LYON", "07:00", "09:30", "MARSEILLE"),
+      t("LYON", "08:00", "09:35", "NICE"),
+    ]);
+    expect(result.map((r) => r.origin)).toEqual(["MARSEILLE", "NICE"]); // 2 trains vs 1
+    const marseille = result[0];
+    expect(marseille.trains).toBe(2);
+    expect(marseille.firstDeparture).toBe("07:00");
+    expect(marseille.fastestMinutes).toBe(120); // 09:00 → 11:00
+    expect(marseille.list).toHaveLength(2);
+  });
+
+  it("returns an empty array for no trains", () => {
+    expect(aggregateByOrigin([])).toEqual([]);
   });
 });

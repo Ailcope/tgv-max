@@ -45,9 +45,25 @@ export interface DestinationAvailability {
   list: Train[];
 }
 
+/** Aggregated availability from one origin toward a destination on a specific date. */
+export interface OriginAvailability {
+  origin: string;
+  trains: number;
+  firstDeparture: string;
+  fastestMinutes: number;
+  list: Train[];
+}
+
 /** Aggregated availability toward one destination over the whole window. */
 export interface RangeDestination {
   destination: string;
+  trains: number;
+  days: number;
+}
+
+/** Aggregated availability from one origin over the whole window. */
+export interface RangeOrigin {
+  origin: string;
   trains: number;
   days: number;
 }
