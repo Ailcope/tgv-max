@@ -32,7 +32,7 @@ export class MapView implements View {
 
   private readonly picker: StationPicker;
   private readonly modeSelect: HTMLSelectElement;
-  private readonly stationFieldLabel: HTMLLabelElement;
+  private readonly stationFieldLabel: HTMLSpanElement;
   private readonly scopeSelect: HTMLSelectElement;
   private readonly dateInput: HTMLInputElement;
   private readonly summary = el("div", { class: "summary" });
@@ -79,13 +79,11 @@ export class MapView implements View {
       },
     );
 
-    this.stationFieldLabel = el("label", { class: "f" }, [
-      el("span", { class: "f-lab", text: "Départ" }),
-      this.picker.element,
-    ]);
+    this.stationFieldLabel = el("span", { class: "f-lab", text: "Départ" });
+    const stationField = el("label", { class: "f" }, [this.stationFieldLabel, this.picker.element]);
     const controls = el("div", { class: "controls" }, [
       field("Mode", this.modeSelect),
-      this.stationFieldLabel,
+      stationField,
       field("Période", this.scopeSelect),
       field("Date", this.dateInput),
       el("button", {
