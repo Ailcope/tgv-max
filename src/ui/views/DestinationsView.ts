@@ -6,10 +6,11 @@ import { addDays, frDateLong, iso, nextSaturday, today } from "@/lib/dates";
 import { formatRidership } from "@/lib/format";
 import { prettyStation } from "@/lib/text";
 import { flag } from "../components/flags";
+import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, field, select } from "../dom";
+import { button, clear, el, field } from "../dom";
 import type { View } from "./View";
 
 type SortKey = "trains" | "dur" | "pop" | "confid" | "abc";
@@ -54,11 +55,13 @@ export class DestinationsView implements View {
       value: "PARIS (intramuros)",
       onSelect: () => void this.run(),
     });
-    this.modeSelect = select(
+    this.modeSelect = rememberedSelect(
+      "ouAller.mode",
       [
         ["from", "Depuis une gare"],
         ["to", "Vers une gare"],
       ],
+      "from",
       () => {
         this.stationFieldLabel.textContent = this.mode() === "to" ? "Arrivée" : "Départ";
         void this.run();
@@ -71,7 +74,8 @@ export class DestinationsView implements View {
       value: iso(nextSaturday()),
     });
     this.dateInput.addEventListener("change", () => void this.run());
-    this.durSelect = select(
+    this.durSelect = rememberedSelect(
+      "ouAller.duree",
       [
         ["0", "Toute durée"],
         ["120", "≤ 2h"],
@@ -79,9 +83,11 @@ export class DestinationsView implements View {
         ["240", "≤ 4h"],
         ["360", "≤ 6h"],
       ],
+      "0",
       () => this.render(),
     );
-    this.sortSelect = select(
+    this.sortSelect = rememberedSelect(
+      "ouAller.tri",
       [
         ["trains", "Plus de trains"],
         ["dur", "Trajet le plus court"],
@@ -89,10 +95,15 @@ export class DestinationsView implements View {
         ["confid", "Les plus confidentielles"],
         ["abc", "A → Z"],
       ],
+      "trains",
       () => this.render(),
     );
 
-    this.stationFieldLabel = el("span", { class: "f-lab", text: "Départ" });
+    // Comme sur la carte : l'intitulé doit correspondre au mode retenu.
+    this.stationFieldLabel = el("span", {
+      class: "f-lab",
+      text: this.mode() === "to" ? "Arrivée" : "Départ",
+    });
     const stationField = el("label", { class: "f" }, [this.stationFieldLabel, this.picker.element]);
     const controls = el("div", { class: "controls" }, [
       field("Mode", this.modeSelect),

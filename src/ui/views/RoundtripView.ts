@@ -6,10 +6,11 @@ import { groupByDate, planDayTrips, planWeekends, type TrainsByDate } from "@/do
 import { durationMinutes, formatDuration, hhmmToMinutes } from "@/domain/time";
 import { DOWS, frDate, frDateLong, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
+import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
 import { axisBadge, reserveButton } from "../components/trains";
-import { button, clear, el, field, select } from "../dom";
+import { button, clear, el, field } from "../dom";
 import { createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
 import type { View } from "./View";
 
@@ -50,17 +51,20 @@ export class RoundtripView implements View {
     const swap = button("⇄", "swap", () => this.swap());
     swap.title = "Inverser";
 
-    this.modeSelect = select(
+    this.modeSelect = rememberedSelect(
+      "allerRetour.formule",
       [
         ["day", "Aller-retour dans la journée"],
         ["weekend", "Escapade de week-end"],
       ],
+      "day",
       () => {
         this.toggleStayField();
         void this.run();
       },
     );
-    this.staySelect = select(
+    this.staySelect = rememberedSelect(
+      "allerRetour.surPlace",
       [
         ["180", "≥ 3h sur place"],
         ["240", "≥ 4h sur place"],
@@ -68,10 +72,11 @@ export class RoundtripView implements View {
         ["360", "≥ 6h sur place"],
         ["480", "≥ 8h sur place"],
       ],
+      "240",
       () => void this.run(),
     );
-    this.staySelect.value = "240";
-    this.earlySelect = select(
+    this.earlySelect = rememberedSelect(
+      "allerRetour.pasAvant",
       [
         ["0", "Peu importe"],
         ["360", "dès 6h"],
@@ -80,9 +85,11 @@ export class RoundtripView implements View {
         ["540", "dès 9h"],
         ["600", "dès 10h"],
       ],
+      "0",
       () => void this.run(),
     );
-    this.lateSelect = select(
+    this.lateSelect = rememberedSelect(
+      "allerRetour.pasApres",
       [
         ["0", "Peu importe"],
         ["1080", "avant 18h"],
@@ -90,6 +97,7 @@ export class RoundtripView implements View {
         ["1260", "avant 21h"],
         ["1320", "avant 22h"],
       ],
+      "0",
       () => void this.run(),
     );
 
@@ -110,6 +118,10 @@ export class RoundtripView implements View {
       this.out,
     ]);
     this.handle = createMap(this.mapEl, { zoom: 6 });
+    // « Sur place » ne concerne que l'aller-retour dans la journée. La formule
+    // étant désormais retenue, le champ doit déjà être masqué à l'ouverture
+    // quand on repart sur une escapade de week-end.
+    this.toggleStayField();
   }
 
   activate(): void {

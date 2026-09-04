@@ -6,9 +6,10 @@ import type { Station } from "@/domain/models";
 import { formatDuration } from "@/domain/time";
 import { addDays, frDateLong, iso, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
+import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
 import { hint } from "../components/states";
-import { clear, el, field, select } from "../dom";
+import { clear, el, field } from "../dom";
 import { ACCENT, createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
 import type { View } from "./View";
 
@@ -49,11 +50,13 @@ export class MapView implements View {
       value: "PARIS (intramuros)",
       onSelect: () => void this.run(),
     });
-    this.modeSelect = select(
+    this.modeSelect = rememberedSelect(
+      "carte.mode",
       [
         ["from", "Depuis une gare"],
         ["to", "Vers une gare"],
       ],
+      "from",
       () => {
         this.stationFieldLabel.textContent = this.modeSelect.value === "to" ? "Arrivée" : "Départ";
         void this.run();
@@ -68,18 +71,25 @@ export class MapView implements View {
     this.dateInput.addEventListener("change", () => {
       if (this.scopeSelect.value === "date") void this.run();
     });
-    this.scopeSelect = select(
+    this.scopeSelect = rememberedSelect(
+      "carte.periode",
       [
         ["range", "30 prochains jours"],
         ["date", "Une date précise"],
       ],
+      "range",
       () => {
         this.toggleDateField();
         void this.run();
       },
     );
 
-    this.stationFieldLabel = el("span", { class: "f-lab", text: "Départ" });
+    // L'intitulé du champ suit le mode : retenu à « vers une gare », il doit
+    // afficher « Arrivée » dès l'ouverture, sans attendre un changement.
+    this.stationFieldLabel = el("span", {
+      class: "f-lab",
+      text: this.modeSelect.value === "to" ? "Arrivée" : "Départ",
+    });
     const stationField = el("label", { class: "f" }, [this.stationFieldLabel, this.picker.element]);
     const controls = el("div", { class: "controls" }, [
       field("Mode", this.modeSelect),

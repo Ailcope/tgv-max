@@ -4,10 +4,11 @@ import { planJourneys, transferWaits, type Journey } from "@/domain/connections"
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { frDateLong, iso, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
+import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, hint, loading } from "../components/states";
 import { axisBadge, nextDayChip, reserveButton } from "../components/trains";
-import { button, clear, el, field, select } from "../dom";
+import { button, clear, el, field } from "../dom";
 import type { View } from "./View";
 
 /**
@@ -41,16 +42,18 @@ export class ConnectionsView implements View {
     swap.title = "Inverser";
     this.dateInput = el("input", { class: "date-input", type: "date", min: iso(today()), value: iso(today()) });
     this.dateInput.addEventListener("change", () => void this.run());
-    this.transferSelect = select(
+    this.transferSelect = rememberedSelect(
+      "corresp.attente",
       [["15", "corresp. ≥ 15 min"], ["20", "corresp. ≥ 20 min"], ["30", "corresp. ≥ 30 min"], ["45", "corresp. ≥ 45 min"]],
+      "20",
       () => void this.run(),
     );
-    this.transferSelect.value = "20";
-    this.legsSelect = select(
+    this.legsSelect = rememberedSelect(
+      "corresp.jambes",
       [["2", "1 correspondance"], ["3", "2 correspondances"], ["4", "3 correspondances"]],
+      "3",
       () => void this.run(),
     );
-    this.legsSelect.value = "3";
 
     const controls = el("div", { class: "controls" }, [
       field("Départ", this.fromPicker.element),
