@@ -1,4 +1,5 @@
 import { aggregateByDestination, aggregateByOrigin } from "@/domain/availability";
+import type { StationDateCount } from "@/domain/heatmap";
 import type {
   DailyCounts,
   DestinationAvailability,
@@ -42,6 +43,12 @@ interface OrigRangeRow {
   trains: number;
   days: number;
 }
+interface StationDateRow {
+  date: string;
+  trains: number;
+  destination?: string;
+  origine?: string;
+}
 
 /** Domain-level access to TGV MAX availability, built on top of {@link SncfApiClient}. */
 export class TgvmaxRepository {
@@ -75,6 +82,40 @@ export class TgvmaxRepository {
     const counts: DailyCounts = {};
     for (const r of rows) counts[dateOnly(r.date)] = r.n;
     return counts;
+  }
+
+  /**
+   * Trains MAX par gare **et** par date, depuis (ou vers) une gare donnée.
+   *
+   * C'est la matière de la carte de chaleur. L'agrégation est faite par l'API :
+   * refaire trente fois {@link destinationsOn} donnerait le même tableau au prix
+   * de trente requêtes et de quelques milliers de lignes rapatriées pour rien.
+   */
+  async countsByStationAndDate(
+    station: string,
+    mode: "from" | "to" = "from",
+  ): Promise<StationDateCount[]> {
+    const other = mode === "from" ? "destination" : "origine";
+    const where = and(
+      mode === "from" ? filters.from(station) : filters.to(station),
+      filters.maxSeat(),
+    );
+    const rows = await this.api.all<StationDateRow>(
+      where,
+      {
+        groupBy: `${other}, date`,
+        select: `${other}, date, count(*) as trains`,
+        orderBy: "date",
+      },
+      6000,
+    );
+    return rows
+      .map((r) => ({
+        station: (mode === "from" ? r.destination : r.origine) ?? "",
+        date: dateOnly(r.date),
+        trains: r.trains,
+      }))
+      .filter((r) => r.station !== "");
   }
 
   /** All MAX trains for one O/D on a given date. */

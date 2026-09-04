@@ -26,11 +26,19 @@ export class App {
   ) {
     this.palette = new CommandPalette(stations, (r) => {
       // Origine + destination → Calendrier ; origine seule → Où partir ?
-      const target = r.destination ? "calendar" : "destinations";
-      const view = this.views.find((v) => v.id === target);
-      view?.preset?.(r.origin, r.destination);
-      this.navigate(target);
+      this.open(r.destination ? "calendar" : "destinations", r.origin, r.destination);
     });
+  }
+
+  /**
+   * Ouvre un onglet sur un trajet donné. C'est ce que fait la palette de
+   * recherche, et c'est aussi ce dont une vue a besoin pour passer la main à
+   * une autre : la carte de chaleur montre où il reste de la place, le
+   * calendrier dit quand, et l'une doit pouvoir mener à l'autre.
+   */
+  open(id: string, origin: string, destination?: string): void {
+    this.views.find((v) => v.id === id)?.preset?.(origin, destination);
+    this.navigate(id);
   }
 
   mount(): void {
