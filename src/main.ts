@@ -7,6 +7,7 @@ import { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { CalendarView } from "@/ui/views/CalendarView";
 import { ConnectionsView } from "@/ui/views/ConnectionsView";
 import { DestinationsView } from "@/ui/views/DestinationsView";
+import { HeatmapView } from "@/ui/views/HeatmapView";
 import { MapView } from "@/ui/views/MapView";
 import { RoundtripView } from "@/ui/views/RoundtripView";
 
@@ -25,15 +26,21 @@ const stations = new StationRepository();
 // (VITE_FREEPLACES_RELAY). Sans lui, les vues affichent ce qu'elles affichaient.
 const freePlaces = new FreePlacesRepository();
 
-new App(
+const heatmap = new HeatmapView(trips, stations);
+
+const app = new App(
   root,
   [
     new CalendarView(trips, stations, freePlaces),
     new DestinationsView(trips, stations),
+    heatmap,
     new ConnectionsView(trips, stations),
     new MapView(trips, stations),
     new RoundtripView(trips, stations),
   ],
   trips,
   stations,
-).mount();
+);
+// Une case de la carte de chaleur ouvre le calendrier du trajet correspondant.
+heatmap.onPick = (origin, destination) => app.open("calendar", origin, destination);
+app.mount();

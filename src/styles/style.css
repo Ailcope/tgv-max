@@ -1380,3 +1380,90 @@ a {
   font-size: 12.5px;
   color: var(--muted);
 }
+
+/* ---- Carte de chaleur (gares × jours) ---- */
+/* Le tableau peut faire trente colonnes : il défile horizontalement dans son
+   propre conteneur, la page elle-même ne bouge pas. La première colonne reste
+   collée à gauche, sinon on perd le nom de la gare dès le premier défilement. */
+.hm-scroll {
+  margin-top: 14px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.hm {
+  min-width: max-content;
+}
+.hm-row {
+  display: grid;
+  grid-template-columns: 160px repeat(var(--hm-cols), 26px);
+  align-items: stretch;
+}
+.hm-lab {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 4px;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  font-size: 12.5px;
+}
+.hm-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hm-total {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+}
+.hm-head .hm-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.15;
+}
+.hm-head .hm-day b {
+  color: var(--ink);
+  font-size: 11.5px;
+}
+.hm-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  border: 1px solid var(--card);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.hm-has {
+  cursor: pointer;
+}
+.hm-has:hover {
+  outline: 2px solid var(--pink);
+  outline-offset: -2px;
+}
+/* Le week-end est la question la plus posée : on le repère sans le colorer,
+   pour ne pas entrer en concurrence avec l'échelle de chaleur. */
+.hm-we {
+  box-shadow: inset 0 -2px 0 var(--violet-l);
+}
+.lg-peak {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .hm-row {
+    grid-template-columns: 118px repeat(var(--hm-cols), 24px);
+  }
+}
