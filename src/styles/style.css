@@ -1334,3 +1334,24 @@ a {
 .cell-tight {
   box-shadow: inset 0 0 0 2px #d97400;
 }
+
+/* ---- Aller-retour sur dates choisies ---- */
+/* Un sens du voyage tient dans un bloc : la ligne de résumé, puis le détail des
+   jambes quand il y a une correspondance. */
+.rt-leg-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.rt-leg-group:last-child {
+  border-bottom: 0;
+}
+.rt-leg-group .train {
+  margin-left: 18px;
+  font-size: 13px;
+}
+.rt-leg-group .jy-wait {
+  margin-left: 18px;
+}

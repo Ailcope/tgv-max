@@ -2,9 +2,18 @@ import * as L from "leaflet";
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { Train } from "@/domain/models";
-import { groupByDate, planDayTrips, planWeekends, type TrainsByDate } from "@/domain/roundtrip";
+import { planJourneys, transferWaits, type Journey } from "@/domain/connections";
+import {
+  asJourney,
+  datesBetween,
+  groupByDate,
+  planDatedTrips,
+  planDayTrips,
+  planWeekends,
+  type TrainsByDate,
+} from "@/domain/roundtrip";
 import { durationMinutes, formatDuration, hhmmToMinutes } from "@/domain/time";
-import { DOWS, frDate, frDateLong, parseISO, today } from "@/lib/dates";
+import { addDays, DOWS, frDate, frDateLong, iso, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
@@ -27,6 +36,12 @@ export class RoundtripView implements View {
   private readonly staySelect: HTMLSelectElement;
   private readonly earlySelect: HTMLSelectElement;
   private readonly lateSelect: HTMLSelectElement;
+  private readonly departFrom: HTMLInputElement;
+  private readonly departTo: HTMLInputElement;
+  private readonly returnFrom: HTMLInputElement;
+  private readonly returnTo: HTMLInputElement;
+  private readonly nightsSelect: HTMLSelectElement;
+  private readonly viaSelect: HTMLSelectElement;
   private readonly summary = el("div", { class: "summary" });
   private readonly mapEl = el("div", { class: "map map-sm" });
   private readonly out = el("div", { class: "rt-list" });
@@ -54,11 +69,37 @@ export class RoundtripView implements View {
       [
         ["day", "Aller-retour dans la journée"],
         ["weekend", "Escapade de week-end"],
+        ["dates", "Mes dates"],
       ],
       () => {
-        this.toggleStayField();
+        this.toggleFields();
         void this.run();
       },
+    );
+    // Bornes du mode « Mes dates ». Deux intervalles plutôt que deux dates
+    // fermes : on part rarement un jour précis, on part « dans ces eaux-là ».
+    this.departFrom = dateInput(iso(today()), () => void this.run());
+    this.departTo = dateInput(iso(addDays(today(), 7)), () => void this.run());
+    this.returnFrom = dateInput(iso(addDays(today(), 2)), () => void this.run());
+    this.returnTo = dateInput(iso(addDays(today(), 10)), () => void this.run());
+    this.nightsSelect = select(
+      [
+        ["0", "Peu importe"],
+        ["1", "≥ 1 nuit"],
+        ["2", "≥ 2 nuits"],
+        ["3", "≥ 3 nuits"],
+      ],
+      () => void this.run(),
+    );
+    // Les correspondances demandent le dump complet des trains de chaque
+    // journée : c'est lourd, on ne l'active donc que sur des dates choisies.
+    this.viaSelect = select(
+      [
+        ["1", "Trajets directs"],
+        ["2", "Jusqu'à 1 correspondance"],
+        ["3", "Jusqu'à 2 correspondances"],
+      ],
+      () => void this.run(),
     );
     this.staySelect = select(
       [
@@ -99,6 +140,12 @@ export class RoundtripView implements View {
       field("Arrivée", this.toPicker.element),
       field("Formule", this.modeSelect),
       field("Sur place", this.staySelect),
+      field("Aller entre le", this.departFrom),
+      field("et le", this.departTo),
+      field("Retour entre le", this.returnFrom),
+      field("et le", this.returnTo),
+      field("Sur place", this.nightsSelect),
+      field("Correspondances", this.viaSelect),
       field("Aller pas avant", this.earlySelect),
       field("Retour pas après", this.lateSelect),
       button("Planifier", "btn-primary", () => void this.run()),
@@ -110,6 +157,7 @@ export class RoundtripView implements View {
       this.out,
     ]);
     this.handle = createMap(this.mapEl, { zoom: 6 });
+    this.toggleFields();
   }
 
   activate(): void {
@@ -117,9 +165,20 @@ export class RoundtripView implements View {
     setTimeout(() => this.handle.map.invalidateSize(), 60);
   }
 
-  private toggleStayField(): void {
-    const field_ = this.staySelect.parentElement;
-    if (field_) field_.style.display = this.modeSelect.value === "day" ? "" : "none";
+  /** Chaque formule n'a pas besoin des mêmes réglages : on masque le reste. */
+  private toggleFields(): void {
+    const mode = this.modeSelect.value;
+    const show = (control: HTMLElement, visible: boolean): void => {
+      const wrapper = control.parentElement;
+      if (wrapper) wrapper.style.display = visible ? "" : "none";
+    };
+    show(this.staySelect, mode === "day");
+    const dated = mode === "dates";
+    for (const c of [this.departFrom, this.departTo, this.returnFrom, this.returnTo]) {
+      show(c, dated);
+    }
+    show(this.nightsSelect, dated);
+    show(this.viaSelect, dated);
   }
 
   private swap(): void {
@@ -143,6 +202,7 @@ export class RoundtripView implements View {
     this.drawMap(from, to);
     loading(this.out, "Recherche des allers-retours possibles…");
     clear(this.summary);
+    if (this.modeSelect.value === "dates") return this.runDated(from, to);
     try {
       const [outbound, inbound] = await Promise.all([
         this.repo.directTrains(from, to),
@@ -163,6 +223,146 @@ export class RoundtripView implements View {
       else this.renderWeekend(from, to, outByDate, inByDate);
     } catch (e) {
       errorState(this.out, (e as Error).message);
+    }
+  }
+
+  /**
+   * Mode « Mes dates » : l'utilisateur donne une fenêtre d'aller et une fenêtre
+   * de retour, et on cherche les combinaisons, avec correspondances s'il le
+   * demande.
+   */
+  private async runDated(from: string, to: string): Promise<void> {
+    const departDates = datesBetween(this.departFrom.value, this.departTo.value, MAX_DATES);
+    const returnDates = datesBetween(this.returnFrom.value, this.returnTo.value, MAX_DATES);
+    if (!departDates.length || !returnDates.length) {
+      empty(this.summary, "Vérifiez les intervalles de dates : la fin doit suivre le début.");
+      clear(this.out);
+      return;
+    }
+    const maxLegs = Number(this.viaSelect.value);
+    try {
+      const [outbound, inbound] =
+        maxLegs > 1
+          ? await this.datedWithConnections(from, to, departDates, returnDates, maxLegs)
+          : await this.datedDirect(from, to, departDates, returnDates);
+      this.loaded = true;
+      this.renderDated(from, to, outbound, inbound, maxLegs);
+    } catch (e) {
+      errorState(this.out, (e as Error).message);
+    }
+  }
+
+  /** Trajets directs : une requête par sens sur toute la fenêtre, puis découpage. */
+  private async datedDirect(
+    from: string,
+    to: string,
+    departDates: string[],
+    returnDates: string[],
+  ): Promise<[JourneysByDate, JourneysByDate]> {
+    const [out, back] = await Promise.all([
+      this.repo.directTrains(from, to),
+      this.repo.directTrains(to, from),
+    ]);
+    const early = Number(this.earlySelect.value);
+    const late = Number(this.lateSelect.value);
+    return [
+      pickDates(groupByDate(out), departDates, (t) => hhmmToMinutes(t.departure) >= early),
+      pickDates(groupByDate(back), returnDates, (t) => !late || hhmmToMinutes(t.departure) <= late),
+    ];
+  }
+
+  /**
+   * Avec correspondances : il faut tous les trains de chaque journée, pas
+   * seulement ceux de l'O/D. C'est un chargement par date, d'où la fenêtre
+   * volontairement courte et le message d'attente explicite.
+   */
+  private async datedWithConnections(
+    from: string,
+    to: string,
+    departDates: string[],
+    returnDates: string[],
+    maxLegs: number,
+  ): Promise<[JourneysByDate, JourneysByDate]> {
+    const all = [...new Set([...departDates, ...returnDates])].sort().slice(0, MAX_DATES_VIA);
+    loading(
+      this.out,
+      `Chargement des trains de ${all.length} journée${all.length > 1 ? "s" : ""}, ` +
+        "puis recherche des itinéraires…",
+    );
+    const days = await Promise.all(
+      all.map(async (d) => [d, await this.repo.allTrainsOn(d)] as const),
+    );
+    const early = Number(this.earlySelect.value);
+    const late = Number(this.lateSelect.value);
+    const outbound: JourneysByDate = {};
+    const inbound: JourneysByDate = {};
+    for (const [date, trains] of days) {
+      if (departDates.includes(date)) {
+        const found = planJourneys(trains, from, to, { maxLegs }).filter(
+          (j) => hhmmToMinutes(j.departure) >= early,
+        );
+        if (found.length) outbound[date] = found;
+      }
+      if (returnDates.includes(date)) {
+        const found = planJourneys(trains, to, from, { maxLegs }).filter(
+          (j) => !late || hhmmToMinutes(j.departure) <= late,
+        );
+        if (found.length) inbound[date] = found;
+      }
+    }
+    return [outbound, inbound];
+  }
+
+  private renderDated(
+    from: string,
+    to: string,
+    outbound: JourneysByDate,
+    inbound: JourneysByDate,
+    maxLegs: number,
+  ): void {
+    const trips = planDatedTrips(outbound, inbound, {
+      minNights: Number(this.nightsSelect.value),
+    });
+    clear(this.summary).appendChild(
+      el("div", {
+        class: "sum-line",
+        html:
+          `Aller-retour <b>${prettyStation(from)}</b> ⇄ <b>${prettyStation(to)}</b> sur vos dates · ` +
+          (trips.length
+            ? `<span class="ok">${trips.length} combinaison${trips.length > 1 ? "s" : ""}</span>`
+            : `<span class="ko">aucune combinaison</span> avec place MAX dans les deux sens`) +
+          (maxLegs > 1 ? " · correspondances autorisées" : " · trajets directs"),
+      }),
+    );
+    clear(this.out);
+    if (!trips.length) {
+      empty(
+        this.out,
+        maxLegs > 1
+          ? "Rien sur ces dates, même en changeant de train. Élargissez les fenêtres."
+          : "Rien en direct sur ces dates. Essayez d'autoriser les correspondances.",
+      );
+      return;
+    }
+    for (const t of trips) {
+      this.out.appendChild(
+        el("div", { class: "rt-card" }, [
+          el("div", { class: "rt-date" }, [
+            el("b", { text: `${frDate(t.departDate)} → ${frDate(t.returnDate)}` }),
+            el("span", {
+              class: "rt-stay",
+              text: t.nights
+                ? `${t.nights} nuit${t.nights > 1 ? "s" : ""} sur place`
+                : "dans la journée",
+            }),
+          ]),
+          el("div", { class: "rt-legs" }, [
+            journeyBlock("Aller", from, to, t.outbound),
+            journeyBlock("Retour", to, from, t.back),
+          ]),
+          reserveButton(),
+        ]),
+      );
     }
   }
 
@@ -320,4 +520,86 @@ function weekendGroup(label: string, a: string, b: string, rows: [string, Train]
     );
   }
   return group;
+}
+
+/** Fenêtre maximale d'un intervalle de dates, et sa version « avec correspondances ». */
+const MAX_DATES = 31;
+/** Un chargement complet par journée : au-delà, l'attente n'est plus tenable. */
+const MAX_DATES_VIA = 8;
+
+/** Trajets groupés par date, comme {@link TrainsByDate} mais après recherche. */
+type JourneysByDate = Record<string, Journey[]>;
+
+/**
+ * Restreint des trains groupés par date aux seules dates voulues, en appliquant
+ * un filtre horaire, et les convertit en trajets à une jambe.
+ */
+function pickDates(
+  byDate: TrainsByDate,
+  dates: string[],
+  keep: (t: Train) => boolean,
+): JourneysByDate {
+  const out: JourneysByDate = {};
+  for (const date of dates) {
+    const kept = (byDate[date] ?? []).filter(keep);
+    if (kept.length) out[date] = kept.map(asJourney);
+  }
+  return out;
+}
+
+/** Un `<input type="date">` borné à aujourd'hui, relié à un gestionnaire. */
+function dateInput(value: string, onChange: () => void): HTMLInputElement {
+  const input = el("input", { class: "date-input", type: "date", min: iso(today()), value });
+  input.addEventListener("change", onChange);
+  return input;
+}
+
+/** Un sens du voyage : le trajet complet, correspondances détaillées. */
+function journeyBlock(label: string, a: string, b: string, j: Journey): HTMLElement {
+  const block = el("div", { class: "rt-leg-group" }, [
+    el("div", { class: "rt-leg" }, [
+      el("span", { class: `rt-tag${label === "Retour" ? " tag-ret" : ""}`, text: label }),
+      el("span", { class: "rt-od", text: `${prettyStation(a)} → ${prettyStation(b)}` }),
+      el("span", {
+        class: "rt-time",
+        html: `<b>${j.departure}</b> → <b>${j.arrival}</b>${j.arrivesNextDay ? ' <span class="t-j1">J+1</span>' : ""}`,
+      }),
+      el("span", { class: "t-dur", text: formatDuration(j.totalMinutes) }),
+      el("span", {
+        class: "jy-transfers" + (j.transfers ? "" : " jy-direct"),
+        text: j.transfers ? `${j.transfers} corresp.` : "direct",
+      }),
+    ]),
+  ]);
+  if (!j.transfers) return block;
+  const waits = transferWaits(j);
+  j.legs.forEach((t, i) => {
+    if (i > 0) {
+      block.appendChild(
+        el("div", {
+          class: "jy-wait",
+          text: `⏱ ${formatDuration(waits[i - 1])} de correspondance à ${prettyStation(t.origin)}`,
+        }),
+      );
+    }
+    block.appendChild(
+      el("div", { class: "train" }, [
+        el("span", {
+          class: "t-od",
+          text: `${prettyStation(t.origin)} → ${prettyStation(t.destination)}`,
+        }),
+        el("span", {
+          class: "t-time",
+          html: `<b>${t.departure}</b><span class="arrow"> → </span><b>${t.arrival}</b>`,
+        }),
+        el("span", {
+          class: "t-dur",
+          text: formatDuration(durationMinutes(t.departure, t.arrival)),
+        }),
+        axisBadge(t.axis),
+        el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+      ]),
+    );
+  });
+  return block;
 }
