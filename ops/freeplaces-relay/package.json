@@ -1,0 +1,13 @@
+{
+  "name": "tgvmax-freeplaces-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Relais vers le service « places libres » du MAX Planner officiel.",
+  "type": "module",
+  "scripts": {
+    "start": "node relay.js"
+  },
+  "dependencies": {
+    "playwright": "^1.56.0"
+  }
+}

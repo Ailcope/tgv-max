@@ -12,8 +12,12 @@ import type { RawTgvmaxRecord } from "./dto";
 import { and, filters } from "./query";
 import type { SncfApiClient } from "./SncfApiClient";
 
+// Les codes gares (`origine_iata`) sont dans le même espace de codes que le MAX
+// Planner officiel : c'est par eux qu'un trajet est rapproché de son nombre de
+// places restantes, d'où leur présence dans la projection.
 const TRAIN_FIELDS =
-  "date,train_no,heure_depart,heure_arrivee,axe,origine,destination,od_happy_card";
+  "date,train_no,heure_depart,heure_arrivee,axe,origine,destination," +
+  "origine_iata,destination_iata,od_happy_card";
 
 function toTrain(r: RawTgvmaxRecord): Train {
   return {
@@ -24,6 +28,8 @@ function toTrain(r: RawTgvmaxRecord): Train {
     axis: r.axe,
     origin: r.origine,
     destination: r.destination,
+    originCode: r.origine_iata,
+    destinationCode: r.destination_iata,
     hasMaxSeat: r.od_happy_card === "OUI",
   };
 }
@@ -42,11 +48,18 @@ interface OrigRangeRow {
   trains: number;
   days: number;
 }
+interface CodePairRow {
+  origine_iata: string;
+  destination_iata: string;
+  n: number;
+}
 
 /** Domain-level access to TGV MAX availability, built on top of {@link SncfApiClient}. */
 export class TgvmaxRepository {
   /** Per-date cache of the full day dump (~2 000 rows), used by the journey planner. */
   private readonly dayCache = new Map<string, Promise<Train[]>>();
+  /** Per-O/D cache of the dominant station-code pair (see {@link codePair}). */
+  private readonly codeCache = new Map<string, Promise<[string, string] | null>>();
 
   constructor(private readonly api: SncfApiClient) {}
 
@@ -148,6 +161,41 @@ export class TgvmaxRepository {
       3000,
     );
     return rows.map(toTrain);
+  }
+
+  /**
+   * The busiest station-code pair on an O/D, e.g. `["FRPLY", "FRLPD"]`.
+   *
+   * A city label covers several stations (Paris is `FRPLY`, `FRPMO`, `FRPAZ`…)
+   * while the remaining-seat service is queried per station. One aggregated
+   * query gives the pair that carries most of the traffic, which is the one
+   * that describes the link. Memoized: it does not change during a session.
+   */
+  async codePair(from: string, to: string): Promise<[string, string] | null> {
+    const key = `${from}>${to}`;
+    let cached = this.codeCache.get(key);
+    if (!cached) {
+      cached = this.fetchCodePair(from, to);
+      this.codeCache.set(key, cached);
+      cached.catch(() => this.codeCache.delete(key));
+    }
+    return cached;
+  }
+
+  private async fetchCodePair(from: string, to: string): Promise<[string, string] | null> {
+    const rows = await this.api.all<CodePairRow>(
+      and(filters.from(from), filters.to(to)),
+      {
+        groupBy: "origine_iata, destination_iata",
+        select: "origine_iata, destination_iata, count(*) as n",
+        orderBy: "n DESC",
+      },
+      100,
+    );
+    const best = rows[0];
+    return best?.origine_iata && best.destination_iata
+      ? [best.origine_iata, best.destination_iata]
+      : null;
   }
 
   /** Timestamp of the dataset's last export (data is not real-time). */

@@ -29,8 +29,21 @@ export interface Train {
   axis: string;
   origin: string;
   destination: string;
+  /**
+   * Station code of the origin, e.g. `"FRPLY"`. Same code space as the official
+   * MAX Planner, which is how a train is matched to its remaining-seat count.
+   * Absent when the query did not select it.
+   */
+  originCode?: string;
+  /** Station code of the destination, e.g. `"FRLPD"`. */
+  destinationCode?: string;
   /** Whether a free MAX seat is available on this train (`od_happy_card === "OUI"`). */
   hasMaxSeat: boolean;
+  /**
+   * Remaining MAX seats on this train, when the « places libres » relay is
+   * configured. `undefined` means « unknown », never « none ».
+   */
+  seats?: number;
 }
 
 /** Map of `"YYYY-MM-DD"` → number of MAX trains that day. */
@@ -67,3 +80,26 @@ export interface RangeOrigin {
   trains: number;
   days: number;
 }
+
+/**
+ * Remaining MAX seats for one O/D on one date, as published by the official
+ * MAX Planner. The open dataset only says « there was a seat at export time »;
+ * this says how many are left, which is what tells a tight day from a calm one.
+ */
+export interface DaySeats {
+  /** `"YYYY-MM-DD"`. */
+  date: string;
+  /** Total seats left across the day. */
+  seats: number;
+  /** Trains offering at least one seat. */
+  trains: number;
+  /** Seats on the tightest train of the day (`0` when there is none). */
+  minSeats: number;
+  /** Share of the day's trains open to MAX, `0`–`1`. */
+  ratio: number;
+  /** Seats left, per train number. */
+  byTrain: Record<string, number>;
+}
+
+/** Map of `"YYYY-MM-DD"` → remaining seats that day. */
+export type SeatsByDate = Record<string, DaySeats>;

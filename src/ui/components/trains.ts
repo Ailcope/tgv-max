@@ -3,6 +3,7 @@ import type { Train } from "@/domain/models";
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { prettyStation } from "@/lib/text";
 import { el } from "../dom";
+import { seatsChip } from "./tension";
 
 /** Coloured badge for a network axis (SUD EST, ATLANTIQUE, IC NUIT…). */
 export function axisBadge(axis: string): HTMLElement {
@@ -38,6 +39,8 @@ export function trainRow(t: Train, showOD = false): HTMLElement {
     axisBadge(t.axis),
     nextDayChip(t),
     el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+    // Présent seulement quand le relais « places libres » est configuré.
+    seatsChip(t.seats),
   ];
   if (showOD) {
     children.unshift(
