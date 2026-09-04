@@ -4,6 +4,11 @@
 Le dataset n'est exporte qu'une fois par jour, tot le matin : ce script est donc
 prevu pour un unique passage quotidien. Il ne notifie que les *changements* par
 rapport au dernier passage, pour ne pas repeter la meme liste chaque matin.
+
+Trois changements sont surveilles : une place qui s'ouvre, une place qui
+disparait, et un train suivi qui passe sous un seuil de places restantes. Ce
+dernier demande un relais vers le service des places libres ; sans lui, les
+deux premiers fonctionnent tels quels.
 """
 
 from __future__ import annotations
@@ -62,6 +67,57 @@ def fetch_trains(origin: str, destination: str) -> list[dict]:
         out.extend(results)
         if len(results) < limit:
             break
+    return out
+
+
+def code_pair(origin: str, destination: str) -> tuple[str, str] | None:
+    """Le couple de codes gares qui porte l'essentiel du trafic sur un O/D.
+
+    Un libelle de ville couvre plusieurs gares (Paris est FRPLY, FRPMO,
+    FRPAZ...) alors que le service des places libres s'interroge gare par gare.
+    Une requete agregee donne le couple qui decrit la liaison.
+    """
+    where = " AND ".join([f"origine={quote(origin)}", f"destination={quote(destination)}"])
+    params = urllib.parse.urlencode(
+        {
+            "where": where,
+            "group_by": "origine_iata, destination_iata",
+            "select": "origine_iata, destination_iata, count(*) as n",
+            "order_by": "n DESC",
+            "limit": 1,
+        }
+    )
+    rows = get_json(f"{BASE}/records?{params}").get("results", [])
+    if not rows:
+        return None
+    best = rows[0]
+    if not best.get("origine_iata") or not best.get("destination_iata"):
+        return None
+    return best["origine_iata"], best["destination_iata"]
+
+
+def free_places(relay: str, origin: str, destination: str, date: str) -> dict[str, int]:
+    """Places MAX restantes par numero de train, un jour donne.
+
+    Le dataset ouvert ne dit que « il y avait une place a l'export ». Le
+    nombre de places, lui, ne vient que du service du MAX Planner, qui refuse
+    les appels exterieurs : on passe par le relais (voir ops/freeplaces-relay).
+    """
+    params = urllib.parse.urlencode(
+        {
+            "origin": origin,
+            "destination": destination,
+            # Le service attend un instant complet ; c'est la date qui compte.
+            "departureDateTime": f"{date}T00:00:00.000Z",
+        }
+    )
+    body = get_json(f"{relay.rstrip('/')}/search-freeplaces-proposals?{params}")
+    out: dict[str, int] = {}
+    for proposal in body.get("proposals") or []:
+        number = str(proposal.get("num") or "")
+        count = proposal.get("count")
+        if number and isinstance(count, int):
+            out[number] = count
     return out
 
 
@@ -188,13 +244,75 @@ def ping_healthcheck(cfg: dict, suffix: str = "") -> None:
         print(f"healthcheck KO: {exc}", file=sys.stderr)
 
 
+def tightening(
+    cfg: dict,
+    matched: list[tuple[str, dict, dict]],
+    previous_seats: dict[str, int],
+) -> tuple[dict[str, int], dict[str, int]]:
+    """Places restantes sur les trains suivis, et celles qui viennent de baisser.
+
+    Rend deux dictionnaires : l'etat courant, a reecrire tel quel, et les seuls
+    trains qui viennent de passer sous le seuil. La distinction compte : sans
+    elle, un train a trois places serait signale tous les matins jusqu'a ce
+    qu'il soit plein, et l'alerte perdrait tout son sens.
+
+    Sans relais configure, la fonction ne fait rien : le reste du script marche
+    exactement comme avant.
+    """
+    settings = cfg.get("freeplaces") or {}
+    relay = settings.get("relay_url")
+    if not relay or not matched:
+        return dict(previous_seats), {}
+    threshold = int(settings.get("threshold", 5))
+
+    pairs: dict[tuple[str, str], tuple[str, str] | None] = {}
+    days: dict[tuple[str, str, str], dict[str, int]] = {}
+    seats: dict[str, int] = {}
+    tight: dict[str, int] = {}
+    for entry_key, rule, train in matched:
+        od = (rule["from"], rule["to"])
+        # Un echec est memorise comme un resultat vide : sur une panne du
+        # relais, on ne le rappelle pas une fois par train suivi. Le relais est
+        # un confort, son absence ne prive pas des alertes d'ouverture, qui ne
+        # dependent que du dataset.
+        if od not in pairs:
+            try:
+                pairs[od] = code_pair(*od)
+            except Exception as exc:
+                print(f"codes gares KO [{rule['name']}]: {exc}", file=sys.stderr)
+                pairs[od] = None
+        pair = pairs[od]
+        if not pair:
+            continue
+        day = (pair[0], pair[1], train["date"][:10])
+        if day not in days:
+            try:
+                days[day] = free_places(relay, *day)
+            except Exception as exc:
+                print(f"places libres KO [{rule['name']} {day[2]}]: {exc}", file=sys.stderr)
+                days[day] = {}
+        count = days[day].get(train["train_no"])
+        if count is None:
+            continue
+        seats[entry_key] = count
+        # On ne signale que la traversee du seuil, vers le bas. Un train deja
+        # signale hier reste sous le seuil aujourd'hui sans etre une nouvelle.
+        if 0 < count <= threshold and previous_seats.get(entry_key, threshold + 1) > threshold:
+            tight[entry_key] = count
+    return seats, tight
+
+
 def main() -> int:
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
-    previous = {}
+    previous: dict[str, str] = {}
+    previous_seats: dict[str, int] = {}
     if STATE.exists():
-        previous = json.loads(STATE.read_text(encoding="utf-8")).get("seen", {})
+        saved = json.loads(STATE.read_text(encoding="utf-8"))
+        previous = saved.get("seen", {})
+        previous_seats = saved.get("seats", {})
 
     current: dict[str, str] = {}
+    matched: list[tuple[str, dict, dict]] = []
     errors: list[str] = []
     for rule in cfg["watch"]:
         try:
@@ -207,7 +325,9 @@ def main() -> int:
             continue
         for train in trains:
             if matches(train, rule):
-                current[key(rule, train)] = label(rule, train)
+                entry_key = key(rule, train)
+                current[entry_key] = label(rule, train)
+                matched.append((entry_key, rule, train))
 
     if errors:
         ping_healthcheck(cfg, "/fail")
@@ -222,8 +342,9 @@ def main() -> int:
         if k not in current and k.split("|")[1] >= today
     }
     new = {k: v for k, v in current.items() if k not in previous}
+    seats, tight = tightening(cfg, matched, previous_seats)
 
-    if new or gone:
+    if new or gone or tight:
         lines = []
         if new:
             lines.append("PLACES MAX OUVERTES :")
@@ -233,6 +354,14 @@ def main() -> int:
                 lines.append("")
             lines.append("PLACES DISPARUES :")
             lines += [f"  - {v}" for v in sorted(gone.values())]
+        if tight:
+            if lines:
+                lines.append("")
+            lines.append("PLACES QUI SE RARÉFIENT :")
+            lines += [
+                f"  ! {current[k]} · {n} place(s) restante(s)"
+                for k, n in sorted(tight.items(), key=lambda kv: (kv[1], current[kv[0]]))
+            ]
         lines.append("")
         lines.append(f"Export du dataset : {dataset_timestamp() or 'inconnu'}")
         lines.append("Reserver : https://www.sncf-connect.com/")
@@ -243,6 +372,8 @@ def main() -> int:
             title.append(f"{len(new)} place(s) MAX")
         if gone:
             title.append(f"{len(gone)} perdue(s)")
+        if tight:
+            title.append(f"{len(tight)} en tension")
         title = "TGVmax : " + ", ".join(title)
 
         try:
@@ -250,8 +381,10 @@ def main() -> int:
                 cfg,
                 title,
                 body,
-                priority="high" if new else "default",
-                tags="steam_locomotive" if new else "warning",
+                # Un train qui se vide se reserve le jour meme : c'est aussi
+                # urgent qu'une place qui s'ouvre.
+                priority="high" if new or tight else "default",
+                tags="steam_locomotive" if new else ("hourglass" if tight else "warning"),
             )
         except Exception as exc:
             print(f"ntfy KO: {exc}", file=sys.stderr)
@@ -265,7 +398,11 @@ def main() -> int:
 
     STATE.write_text(
         json.dumps(
-            {"updated": dt.datetime.now().isoformat(timespec="seconds"), "seen": current},
+            {
+                "updated": dt.datetime.now().isoformat(timespec="seconds"),
+                "seen": current,
+                "seats": seats,
+            },
             ensure_ascii=False,
             indent=2,
         ),

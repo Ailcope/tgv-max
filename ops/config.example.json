@@ -23,6 +23,11 @@
     }
   ],
 
+  "freeplaces": {
+    "relay_url": "http://127.0.0.1:8099",
+    "threshold": 5
+  },
+
   "mail": {
     "relay_url": "https://mail.exemple.fr:8443/send",
     "token": "...",
