@@ -1,5 +1,6 @@
 import "@/styles/style.css";
 import { App } from "@/app/App";
+import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import { SncfApiClient } from "@/data/SncfApiClient";
 import { StationRepository } from "@/data/StationRepository";
 import { TgvmaxRepository } from "@/data/TgvmaxRepository";
@@ -20,11 +21,14 @@ if (!root) throw new Error("Élément #app introuvable");
 const api = new SncfApiClient();
 const trips = new TgvmaxRepository(api);
 const stations = new StationRepository();
+// Nombre de places restantes : actif seulement si un relais est configuré
+// (VITE_FREEPLACES_RELAY). Sans lui, les vues affichent ce qu'elles affichaient.
+const freePlaces = new FreePlacesRepository();
 
 new App(
   root,
   [
-    new CalendarView(trips, stations),
+    new CalendarView(trips, stations, freePlaces),
     new DestinationsView(trips, stations),
     new ConnectionsView(trips, stations),
     new MapView(trips, stations),

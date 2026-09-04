@@ -25,3 +25,34 @@ export interface RecordsResponse<T> {
 export interface DatasetMeta {
   metas?: { default?: { data_processed?: string; modified?: string } };
 }
+
+/**
+ * Une proposition du service « places libres » du MAX Planner : un train, et
+ * surtout `count`, le nombre de places MAX encore réservables dessus.
+ * Les horaires sont des `"YYYY-MM-DDTHH:MM"` sans fuseau (heure locale).
+ */
+export interface RawFreePlacesProposal {
+  /** Arrivée, `"2026-09-07T08:22"`. */
+  arr: string;
+  /** Places MAX restantes sur ce train. */
+  count: number;
+  /** Départ, `"2026-09-07T06:20"`. */
+  dep: string;
+  dest: string;
+  /** Numéro de train, `"6641"`. */
+  num: string;
+  orig: string;
+  /** `"ASSIS"`, `"COUCHETTE"`… */
+  space: string;
+  /** `"INOUI"`, `"OUIGO"`… */
+  type: string;
+}
+
+/** Réponse du service « places libres » pour un O/D et une date. */
+export interface FreePlacesResponse {
+  proposals: RawFreePlacesProposal[];
+  /** Part des trains du jour qui proposent des places MAX, entre 0 et 1. */
+  ratio: number;
+  /** Horodatage de la dernière actualisation côté SNCF (millisecondes). */
+  updated?: number;
+}

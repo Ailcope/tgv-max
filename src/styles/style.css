@@ -1225,3 +1225,112 @@ a {
     margin-left: 0;
   }
 }
+
+/* ============ Places restantes & alerte de tension ============ */
+/* Le nombre de places vient du MAX Planner officiel, via le relais optionnel :
+   tout ce bloc ne s'affiche que lorsque l'information a pu être récupérée. */
+
+.seats {
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.seats-calm {
+  background: #e6f5ec;
+  color: #1a6b38;
+  border-color: #c7e8d4;
+}
+.seats-watch {
+  background: #fff4e0;
+  color: #8a5a00;
+  border-color: #f7e0b5;
+}
+.seats-tight {
+  background: #ffe9d6;
+  color: #a33d00;
+  border-color: #f6cba7;
+}
+.seats-critical {
+  background: #fde3e8;
+  color: #a01230;
+  border-color: #f4bccb;
+}
+
+/* Le bandeau. Le clignotement est réservé aux deux niveaux les plus tendus :
+   allumé partout, il ne voudrait plus rien dire. */
+.tension {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-weight: 700;
+  font-size: 14px;
+  border: 1.5px solid var(--ko);
+  background: #fde3e8;
+  color: #8d0f2a;
+}
+.tension-ico {
+  font-size: 17px;
+  line-height: 1;
+}
+.tension-tight {
+  border-color: #d97400;
+  background: #fff1e2;
+  color: #8a4300;
+  animation: tension-pulse 1.6s ease-in-out infinite;
+}
+.tension-critical {
+  animation: tension-blink 1s steps(1, end) infinite;
+}
+@keyframes tension-pulse {
+  50% {
+    background: #ffe0c2;
+  }
+}
+@keyframes tension-blink {
+  50% {
+    background: #f8b6c4;
+    border-color: #8d0f2a;
+  }
+}
+/* Un clignotement qu'on ne peut pas arrêter est une gêne, parfois un risque.
+   Le message reste entièrement lisible sans l'animation. */
+@media (prefers-reduced-motion: reduce) {
+  .tension-tight,
+  .tension-critical {
+    animation: none;
+  }
+}
+
+/* Sur le calendrier : le total de places du jour sous le compte de trains. */
+.cell-seats {
+  align-self: flex-end;
+  font-size: 10.5px;
+  font-weight: 700;
+  opacity: 0.85;
+  line-height: 1.1;
+}
+.cell-tight .cell-seats,
+.cell-critical .cell-seats {
+  color: #a01230;
+  opacity: 1;
+}
+.lvl4 .cell-seats {
+  color: #eafff0;
+}
+.lvl4.cell-tight .cell-seats,
+.lvl4.cell-critical .cell-seats {
+  color: #ffe0e6;
+}
+/* Liseré sur les journées tendues, visible sans avoir à lire le chiffre. */
+.cell-critical {
+  box-shadow: inset 0 0 0 2px var(--ko);
+}
+.cell-tight {
+  box-shadow: inset 0 0 0 2px #d97400;
+}

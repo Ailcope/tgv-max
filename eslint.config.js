@@ -19,4 +19,13 @@ export default tseslint.config(
       "no-console": ["warn", { allow: ["warn", "error"] }],
     },
   },
+  {
+    // `ops/` tourne sous Node, pas dans le navigateur : d'autres globales, et un
+    // service en ligne de commande a le droit de journaliser sur la sortie.
+    files: ["ops/**/*.js"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", URL: "readonly", fetch: "readonly" },
+    },
+    rules: { "no-console": "off" },
+  },
 );

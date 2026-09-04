@@ -1,11 +1,14 @@
+import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import { heatLevel } from "@/domain/availability";
-import type { DailyCounts } from "@/domain/models";
+import type { DailyCounts, DaySeats, SeatsByDate } from "@/domain/models";
+import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
+import { alertBox } from "../components/tension";
 import { reserveButton, trainRow } from "../components/trains";
 import { button, clear, el, field } from "../dom";
 import type { View } from "./View";
@@ -32,10 +35,13 @@ export class CalendarView implements View {
   private readonly summary = el("div", { class: "summary" });
   private readonly grid = el("div", { class: "cal" });
   private readonly detail = el("div", { class: "detail" });
+  /** Places restantes du dernier affichage, vide quand le relais est absent. */
+  private seats: SeatsByDate = {};
 
   constructor(
     private readonly repo: TgvmaxRepository,
     stations: StationRepository,
+    private readonly freePlaces?: FreePlacesRepository,
   ) {
     this.fromPicker = new StationPicker(stations, {
       placeholder: "ex. Paris",
@@ -102,12 +108,43 @@ export class CalendarView implements View {
     }
     loading(this.grid, "Calcul des disponibilités…");
     clear(this.summary);
+    this.seats = {};
     try {
       const counts = await this.repo.dailyCounts(from, to);
+      // La grille s'affiche tout de suite avec le nombre de trains ; les places
+      // arrivent après, en second passage. Le calendrier n'attend pas après un
+      // service tiers qui peut être lent, ou absent.
       this.renderCalendar(from, to, counts);
+      const seats = await this.loadSeats(from, to, counts);
+      if (seats && this.stillShowing(from, to)) {
+        this.seats = seats;
+        this.renderCalendar(from, to, counts);
+      }
     } catch (e) {
       errorState(this.grid, `Impossible de récupérer les données (${(e as Error).message}).`);
     }
+  }
+
+  /** Vrai si l'utilisateur n'a pas changé d'O/D pendant le chargement des places. */
+  private stillShowing(from: string, to: string): boolean {
+    return this.fromPicker.value === from && this.toPicker.value === to;
+  }
+
+  /**
+   * Places restantes sur les journées qui ont au moins un train. Interroger les
+   * journées vides ne rapporterait rien et triplerait le nombre d'appels.
+   */
+  private async loadSeats(
+    from: string,
+    to: string,
+    counts: DailyCounts,
+  ): Promise<SeatsByDate | null> {
+    if (!this.freePlaces?.enabled) return null;
+    const dates = Object.keys(counts).filter((d) => counts[d] > 0);
+    if (!dates.length) return null;
+    const pair = await this.repo.codePair(from, to).catch(() => null);
+    if (!pair) return null;
+    return this.freePlaces.range(pair[0], pair[1], dates);
   }
 
   private renderCalendar(from: string, to: string, counts: DailyCounts): void {
@@ -147,16 +184,24 @@ export class CalendarView implements View {
       const inWindow = d >= start && d <= end;
       const n = counts[ds] ?? 0;
       const level = inWindow ? heatLevel(n) : "x";
+      // Le nombre de places, quand on l'a. La tension est donnée par le train le
+      // plus juste de la journée : un total confortable réparti sur dix trains
+      // ne console pas si celui qui vous arrange n'a plus que deux places.
+      const day = inWindow && n ? this.seats[ds] : undefined;
+      const tension = day ? tensionOf(day.minSeats) : "unknown";
       const cell = el(
         "div",
         {
-          class: `cell lvl${level}${inWindow ? "" : " out"}${n ? " has" : ""}`,
-          title: inWindow ? frDateLong(ds) + (n ? ` · ${n} trajet(s) MAX` : " · aucune place") : "",
+          class:
+            `cell lvl${level}${inWindow ? "" : " out"}${n ? " has" : ""}` +
+            (isAlarming(tension) ? ` cell-${tension}` : ""),
+          title: inWindow ? cellTitle(ds, n, day) : "",
         },
         [
           d.getDate() === 1 ? el("span", { class: "cell-mon", text: MONTHS[d.getMonth()] }) : null,
           el("span", { class: "cell-num", text: String(d.getDate()) }),
           n ? el("span", { class: "cell-n", text: String(n) }) : null,
+          day ? el("span", { class: "cell-seats", text: `${day.seats} pl.` }) : null,
         ],
       );
       if (inWindow && n)
@@ -173,7 +218,9 @@ export class CalendarView implements View {
     cell.classList.add("selected");
     loading(this.detail, `Trajets du ${frDate(date)}…`);
     try {
-      const list = await this.repo.trains(from, to, date);
+      const raw = await this.repo.trains(from, to, date);
+      const day = this.seats[date] ?? null;
+      const list = FreePlacesRepository.attach(raw, day);
       clear(this.detail);
       this.detail.appendChild(
         el("div", { class: "detail-head" }, [
@@ -182,6 +229,16 @@ export class CalendarView implements View {
           reserveButton("Réserver sur SNCF Connect ↗"),
         ]),
       );
+      const tension = day ? tensionOf(day.minSeats) : "unknown";
+      if (day && isAlarming(tension)) {
+        this.detail.appendChild(
+          alertBox(
+            tension,
+            `${tensionMessage(tension, day.minSeats)} ` +
+              `Le train le plus juste de la journée n'a plus que ${day.minSeats} place(s).`,
+          ),
+        );
+      }
       const box = el(
         "div",
         { class: "train-list" },
@@ -208,4 +265,16 @@ export class CalendarView implements View {
     }
     return lg;
   }
+}
+
+/** Infobulle d'une case : date, trains, et places restantes quand on les a. */
+function cellTitle(date: string, trains: number, day?: DaySeats): string {
+  const head = frDateLong(date);
+  if (!trains) return `${head} · aucune place`;
+  const base = `${head} · ${trains} trajet(s) MAX`;
+  if (!day) return base;
+  return (
+    `${base} · ${day.seats} place(s) restantes` +
+    (day.trains > 1 ? `, dont ${day.minSeats} sur le train le plus juste` : "")
+  );
 }

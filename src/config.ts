@@ -18,3 +18,14 @@ export const KOFI_URL = "https://ko-fi.com/snownamida";
 
 /** Ko-fi embeddable panel (official iframe embed, stays on our site). */
 export const KOFI_EMBED_URL = "https://ko-fi.com/snownamida/?hidefeed=true&widget=true&embed=true";
+
+/**
+ * Relais vers le service « places libres » du MAX Planner officiel, seul endroit
+ * qui publie le **nombre de places restantes** par train, là où le dataset ouvert ne
+ * donne qu'un booléen.
+ *
+ * Ce service refuse les appels venus d'un autre site (protection anti-bot), il
+ * faut donc le relayer soi-même : voir `ops/freeplaces-relay/`. Laissé vide,
+ * l'application se comporte exactement comme avant et compte les trains.
+ */
+export const FREEPLACES_RELAY = import.meta.env.VITE_FREEPLACES_RELAY ?? "";
