@@ -1,4 +1,5 @@
 import { SNCF_CONNECT_SEARCH } from "@/config";
+import { bookingUrl } from "@/domain/booking";
 import type { Train } from "@/domain/models";
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { prettyStation } from "@/lib/text";
@@ -54,12 +55,27 @@ export function trainRow(t: Train, showOD = false): HTMLElement {
   return el("div", { class: `train${t.hasMaxSeat ? "" : " train-full"}` }, children);
 }
 
-/** Booking link to SNCF Connect. */
-export const reserveButton = (label = "Réserver ↗"): HTMLElement =>
+/** Lien de réservation vers SNCF Connect, pré-rempli quand on connaît le trajet. */
+export const reserveButton = (label = "Réserver ↗", href: string = SNCF_CONNECT_SEARCH): HTMLElement =>
   el("a", {
     class: "btn-reserve",
-    href: SNCF_CONNECT_SEARCH,
+    href,
     target: "_blank",
     rel: "noopener",
     text: label,
+  });
+
+/**
+ * Lien de réservation pour une jambe de trajet. Sur une correspondance, chaque
+ * train se réserve séparément : un seul bouton global obligerait à ressaisir le
+ * second trajet à la main.
+ */
+export const legReserveLink = (t: Train, date: string): HTMLElement =>
+  el("a", {
+    class: "leg-reserve",
+    href: bookingUrl(t.origin, t.destination, date),
+    target: "_blank",
+    rel: "noopener",
+    text: "Réserver ↗",
+    title: `Réserver ${prettyStation(t.origin)} → ${prettyStation(t.destination)} sur SNCF Connect`,
   });

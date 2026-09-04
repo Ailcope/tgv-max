@@ -17,7 +17,7 @@ import { addDays, DOWS, frDate, frDateLong, iso, parseISO, today } from "@/lib/d
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
-import { axisBadge, reserveButton } from "../components/trains";
+import { axisBadge, legReserveLink } from "../components/trains";
 import { button, clear, el, field, select } from "../dom";
 import { createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
 import type { View } from "./View";
@@ -357,10 +357,9 @@ export class RoundtripView implements View {
             }),
           ]),
           el("div", { class: "rt-legs" }, [
-            journeyBlock("Aller", from, to, t.outbound),
-            journeyBlock("Retour", to, from, t.back),
+            journeyBlock("Aller", from, to, t.outbound, t.departDate),
+            journeyBlock("Retour", to, from, t.back, t.returnDate),
           ]),
-          reserveButton(),
         ]),
       );
     }
@@ -399,10 +398,9 @@ export class RoundtripView implements View {
             el("span", { class: "rt-stay", text: `${formatDuration(t.stayMinutes)} sur place` }),
           ]),
           el("div", { class: "rt-legs" }, [
-            leg("Aller", from, to, t.outbound),
-            leg("Retour", to, from, t.back),
+            leg("Aller", from, to, t.outbound, t.date),
+            leg("Retour", to, from, t.back, t.date),
           ]),
-          reserveButton(),
         ]),
       );
     }
@@ -439,7 +437,6 @@ export class RoundtripView implements View {
           el("div", { class: "rt-date" }, [el("b", { text: `Week-end du ${frDate(c.saturday)}` })]),
           weekendGroup("Aller", from, to, collect(c.departDates, outByDate)),
           weekendGroup("Retour", to, from, collect(c.returnDates, inByDate)),
-          reserveButton(),
         ]),
       );
     }
@@ -483,7 +480,7 @@ function collect(dates: string[], byDate: TrainsByDate): [string, Train][] {
   );
 }
 
-function leg(label: string, a: string, b: string, t: Train): HTMLElement {
+function leg(label: string, a: string, b: string, t: Train, date: string): HTMLElement {
   return el("div", { class: "rt-leg" }, [
     el("span", { class: `rt-tag${label === "Retour" ? " tag-ret" : ""}`, text: label }),
     el("span", { class: "rt-od", text: `${prettyStation(a)} → ${prettyStation(b)}` }),
@@ -491,6 +488,7 @@ function leg(label: string, a: string, b: string, t: Train): HTMLElement {
     el("span", { class: "t-dur", text: formatDuration(durationMinutes(t.departure, t.arrival)) }),
     axisBadge(t.axis),
     el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+    legReserveLink(t, date),
   ]);
 }
 
@@ -516,6 +514,7 @@ function weekendGroup(label: string, a: string, b: string, rows: [string, Train]
         }),
         axisBadge(t.axis),
         el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+        legReserveLink(t, date),
       ]),
     );
   }
@@ -555,23 +554,27 @@ function dateInput(value: string, onChange: () => void): HTMLInputElement {
 }
 
 /** Un sens du voyage : le trajet complet, correspondances détaillées. */
-function journeyBlock(label: string, a: string, b: string, j: Journey): HTMLElement {
-  const block = el("div", { class: "rt-leg-group" }, [
-    el("div", { class: "rt-leg" }, [
-      el("span", { class: `rt-tag${label === "Retour" ? " tag-ret" : ""}`, text: label }),
-      el("span", { class: "rt-od", text: `${prettyStation(a)} → ${prettyStation(b)}` }),
-      el("span", {
-        class: "rt-time",
-        html: `<b>${j.departure}</b> → <b>${j.arrival}</b>${j.arrivesNextDay ? ' <span class="t-j1">J+1</span>' : ""}`,
-      }),
-      el("span", { class: "t-dur", text: formatDuration(j.totalMinutes) }),
-      el("span", {
-        class: "jy-transfers" + (j.transfers ? "" : " jy-direct"),
-        text: j.transfers ? `${j.transfers} corresp.` : "direct",
-      }),
-    ]),
+function journeyBlock(label: string, a: string, b: string, j: Journey, date: string): HTMLElement {
+  const summary = el("div", { class: "rt-leg" }, [
+    el("span", { class: `rt-tag${label === "Retour" ? " tag-ret" : ""}`, text: label }),
+    el("span", { class: "rt-od", text: `${prettyStation(a)} → ${prettyStation(b)}` }),
+    el("span", {
+      class: "rt-time",
+      html: `<b>${j.departure}</b> → <b>${j.arrival}</b>${j.arrivesNextDay ? ' <span class="t-j1">J+1</span>' : ""}`,
+    }),
+    el("span", { class: "t-dur", text: formatDuration(j.totalMinutes) }),
+    el("span", {
+      class: "jy-transfers" + (j.transfers ? "" : " jy-direct"),
+      text: j.transfers ? `${j.transfers} corresp.` : "direct",
+    }),
   ]);
-  if (!j.transfers) return block;
+  const block = el("div", { class: "rt-leg-group" }, [summary]);
+  // Un direct se réserve depuis sa ligne de résumé ; sur une correspondance,
+  // c'est chaque train qui porte son lien, un billet MAX par jambe.
+  if (!j.transfers) {
+    summary.appendChild(legReserveLink(j.legs[0], date));
+    return block;
+  }
   const waits = transferWaits(j);
   j.legs.forEach((t, i) => {
     if (i > 0) {
@@ -598,6 +601,7 @@ function journeyBlock(label: string, a: string, b: string, j: Journey): HTMLElem
         }),
         axisBadge(t.axis),
         el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+        legReserveLink(t, date),
       ]),
     );
   });

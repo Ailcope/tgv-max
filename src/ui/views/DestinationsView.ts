@@ -1,5 +1,6 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
+import { bookingUrl } from "@/domain/booking";
 import type { DestinationAvailability, OriginAvailability, Train } from "@/domain/models";
 import { reachableFrom, type Journey } from "@/domain/connections";
 import { formatDuration } from "@/domain/time";
@@ -9,7 +10,7 @@ import { prettyStation } from "@/lib/text";
 import { flag } from "../components/flags";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
-import { reserveButton, trainRow } from "../components/trains";
+import { legReserveLink, reserveButton, trainRow } from "../components/trains";
 import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
 
@@ -324,10 +325,31 @@ export class DestinationsView implements View {
         body.classList.remove("hidden");
         if (!filled) {
           filled = true;
+          const date = this.dateInput.value;
+          const to = this.mode() === "to";
           [...r.list]
             .sort((a, b) => a.departure.localeCompare(b.departure))
-            .forEach((t) => body.appendChild(trainRow(t)));
-          body.appendChild(reserveButton("Réserver ce trajet ↗"));
+            .forEach((t) => {
+              const row = trainRow(t);
+              // Sur une gare atteinte en correspondance, chaque train se
+              // réserve à part : le lien vit donc sur la ligne, pas sur la carte.
+              if (r.via) row.appendChild(legReserveLink(t, date));
+              body.appendChild(row);
+            });
+          if (r.via) {
+            body.appendChild(
+              el("div", {
+                class: "jy-book-note",
+                text: "Pas de direct ce jour-là : chaque train se réserve séparément.",
+              }),
+            );
+          } else {
+            const picked = this.picker.value ?? "";
+            const [origin, destination] = to ? [r.name, picked] : [picked, r.name];
+            body.appendChild(
+              reserveButton("Réserver ce trajet ↗", bookingUrl(origin, destination, date)),
+            );
+          }
         }
       } else {
         body.classList.add("hidden");

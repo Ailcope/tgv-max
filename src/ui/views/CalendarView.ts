@@ -1,6 +1,7 @@
 import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
+import { bookingUrl } from "@/domain/booking";
 import { heatLevel } from "@/domain/availability";
 import type { DailyCounts, DaySeats, SeatsByDate } from "@/domain/models";
 import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
@@ -226,7 +227,7 @@ export class CalendarView implements View {
         el("div", { class: "detail-head" }, [
           el("h3", { text: frDateLong(date) }),
           el("span", { class: "detail-sub", text: `${list.length} trajet(s) avec place MAX` }),
-          reserveButton("Réserver sur SNCF Connect ↗"),
+          reserveButton("Réserver sur SNCF Connect ↗", bookingUrl(from, to, date)),
         ]),
       );
       const tension = day ? tensionOf(day.minSeats) : "unknown";

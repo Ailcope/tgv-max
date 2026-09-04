@@ -1,12 +1,13 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
+import { bookingUrl } from "@/domain/booking";
 import { planJourneys, transferWaits, type Journey } from "@/domain/connections";
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { frDateLong, iso, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, hint, loading } from "../components/states";
-import { axisBadge, nextDayChip, reserveButton } from "../components/trains";
+import { axisBadge, legReserveLink, nextDayChip, reserveButton } from "../components/trains";
 import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
 
@@ -160,9 +161,18 @@ export class ConnectionsView implements View {
           axisBadge(t.axis),
           nextDayChip(t),
           el("span", { class: "t-no", text: `n°${t.trainNo}` }),
+          legReserveLink(t, this.dateInput.value),
         ]),
       );
     });
-    return el("div", { class: "rt-card" }, [header, legsBox, reserveButton()]);
+    // Un direct se réserve d'un bloc ; une correspondance se réserve jambe par
+    // jambe, et le bouton global n'aurait alors plus rien à désigner.
+    const footer = j.transfers
+      ? el("div", {
+          class: "jy-book-note",
+          text: "Chaque train se réserve séparément : un billet MAX par jambe.",
+        })
+      : reserveButton("Réserver ↗", bookingUrl(j.legs[0].origin, j.legs[0].destination, this.dateInput.value));
+    return el("div", { class: "rt-card" }, [header, legsBox, footer]);
   }
 }

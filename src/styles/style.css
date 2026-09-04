@@ -1355,3 +1355,28 @@ a {
 .rt-leg-group .jy-wait {
   margin-left: 18px;
 }
+
+/* ---- Réservation jambe par jambe ---- */
+/* Sur une correspondance il n'y a pas un billet mais deux : le lien vit donc
+   sur chaque ligne de train, discret, et non en gros bouton sous la carte. */
+.leg-reserve {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  color: var(--pink);
+  border: 1px solid currentcolor;
+  border-radius: 7px;
+  padding: 2px 8px;
+}
+.leg-reserve:hover {
+  background: var(--pink);
+  color: #fff;
+}
+.jy-book-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
