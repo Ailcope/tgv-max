@@ -40,6 +40,7 @@ Puis en cron :
 | --- | --- |
 | `watch[]` | Les trajets suivis. `from`/`to` sont les libellés **exacts** du dataset (`"PARIS (intramuros)"`), `weekdays` suit `date.weekday()` (0 = lundi, 6 = dimanche). `after`/`before` filtrent l'heure de départ. |
 | `ntfy[]` | Une cible ou une liste. Chacune accepte `user`/`password` (Basic) ou `token` (Bearer, pour ntfy.sh). Une cible en panne ne prive pas les autres. |
+| `freeplaces` | Optionnel. `relay_url` pointe le relais « places libres » (voir `ops/freeplaces-relay/`), `threshold` est le nombre de places à partir duquel un train suivi est signalé (5 par défaut). Sans cette clé, seules les ouvertures et les disparitions sont surveillées. |
 | `mail` | Optionnel. Poste le message en JSON sur un relais HTTP qui le remet à un serveur mail. Utile quand la machine n'a aucune sortie SMTP, ce qui est le cas derrière la plupart des box (port 25 bloqué). |
 | `healthcheck_url` | Optionnel. Ping de fin de passage (healthchecks.io ou équivalent) ; `/fail` est envoyé si le dataset est injoignable. |
 
@@ -59,3 +60,17 @@ ouvert au prochain passage.
   disparition de tout.
 - **Casser les accents** : ntfy lit ses en-têtes en latin-1 et renvoie 400 sur
   de l'UTF-8 brut, les titres sont donc encodés en RFC 2047.
+- **Répéter qu'un train est presque plein** : seule la traversée du seuil est
+  signalée. Un train à trois places l'annonce une fois, pas tous les matins
+  jusqu'à ce qu'il soit complet.
+
+## Le seuil de places
+
+Une place qui s'ouvre est une bonne nouvelle, mais ce n'est pas le moment le
+plus utile : le moment utile, c'est quand le train qui vous arrange passe de
+vingt places à trois. Le dataset ouvert ne sait pas le dire, il ne publie
+qu'un « oui / non ». Le nombre de places vient du service du MAX Planner, qui
+refuse les appels extérieurs et se joint donc par le relais.
+
+C'est un supplément, pas une dépendance : `relay_url` absent, ou relais en
+panne, et le script continue d'annoncer les ouvertures et les disparitions.
