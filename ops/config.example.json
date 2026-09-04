@@ -1,0 +1,33 @@
+{
+  "watch": [
+    {
+      "name": "Paris -> Lyon (vendredi soir)",
+      "from": "PARIS (intramuros)",
+      "to": "LYON (intramuros)",
+      "weekdays": [4],
+      "after": "17:00"
+    },
+    {
+      "name": "Lyon -> Paris (dimanche soir)",
+      "from": "LYON (intramuros)",
+      "to": "PARIS (intramuros)",
+      "weekdays": [6],
+      "after": "17:00"
+    }
+  ],
+
+  "ntfy": [
+    {
+      "name": "ntfy.sh",
+      "url": "https://ntfy.sh/tgvmax-choisissez-un-nom-imprevisible"
+    }
+  ],
+
+  "mail": {
+    "relay_url": "https://mail.exemple.fr:8443/send",
+    "token": "...",
+    "to": "moi@exemple.fr"
+  },
+
+  "healthcheck_url": "https://hc.exemple.fr/ping/00000000-0000-0000-0000-000000000000"
+}
