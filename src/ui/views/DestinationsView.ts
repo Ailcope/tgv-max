@@ -41,6 +41,7 @@ export class DestinationsView implements View {
   readonly emoji = "🧭";
   readonly hint = "destinations & départs";
   readonly element: HTMLElement;
+  onStateChange?: () => void;
 
   private readonly picker: StationPicker;
   private readonly modeSelect: HTMLSelectElement;
@@ -173,6 +174,26 @@ export class DestinationsView implements View {
     void this.run();
   }
 
+  /** Le sens, la gare et le jour : de quoi rejouer la recherche à l'identique. */
+  state(): Record<string, string> {
+    return {
+      mode: this.mode(),
+      station: this.picker.value ?? "",
+      date: this.dateInput.value,
+    };
+  }
+
+  restore(params: Record<string, string>): void {
+    if (params.mode === "to" || params.mode === "from") {
+      this.modeSelect.value = params.mode;
+      this.stationFieldLabel.textContent = params.mode === "to" ? "Arrivée" : "Départ";
+      this.toggleViaField();
+    }
+    if (params.station) this.picker.set(params.station);
+    if (params.date) this.dateInput.value = params.date;
+    this.loaded = false; // `activate` relancera la recherche
+  }
+
   private mode(): Mode {
     return this.modeSelect.value as Mode;
   }
@@ -200,6 +221,7 @@ export class DestinationsView implements View {
           : "Recherche des destinations…",
     );
     clear(this.summary);
+    this.onStateChange?.();
     try {
       const grouped =
         this.mode() === "to"

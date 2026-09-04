@@ -969,8 +969,8 @@ a {
 }
 
 /* ---- Bouton recherche rapide (topbar) ---- */
-.btn-search {
-  margin-left: auto;
+.btn-search,
+.btn-share {
   align-self: center;
   display: inline-flex;
   align-items: center;
@@ -985,7 +985,16 @@ a {
   cursor: pointer;
   white-space: nowrap;
 }
-.btn-search:hover {
+/* La recherche est ce qui pousse le groupe de boutons à droite ; « Partager »
+   se range juste après elle. */
+.btn-search {
+  margin-left: auto;
+}
+.btn-share {
+  margin-left: 10px;
+}
+.btn-search:hover,
+.btn-share:hover {
   background: rgba(255, 255, 255, 0.24);
 }
 .btn-search kbd {
@@ -995,7 +1004,7 @@ a {
   border-radius: 5px;
   padding: 1px 5px;
 }
-.btn-search + .btn-kofi {
+.btn-share + .btn-kofi {
   margin-left: 10px;
 }
 

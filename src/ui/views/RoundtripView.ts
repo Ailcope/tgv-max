@@ -30,6 +30,7 @@ export class RoundtripView implements View {
   readonly emoji = "🔁";
   readonly hint = "journée & week-end";
   readonly element: HTMLElement;
+  onStateChange?: () => void;
 
   private readonly fromPicker: StationPicker;
   private readonly toPicker: StationPicker;
@@ -196,6 +197,25 @@ export class RoundtripView implements View {
     show(this.viaSelect, dated);
   }
 
+  /** Le trajet et la formule ; les seuils horaires restent des réglages. */
+  state(): Record<string, string> {
+    return {
+      from: this.fromPicker.value ?? "",
+      to: this.toPicker.value ?? "",
+      formule: this.modeSelect.value,
+    };
+  }
+
+  restore(params: Record<string, string>): void {
+    if (params.from) this.fromPicker.set(params.from);
+    if (params.to) this.toPicker.set(params.to);
+    if (["day", "weekend", "dates"].includes(params.formule)) {
+      this.modeSelect.value = params.formule;
+      this.toggleFields();
+    }
+    this.loaded = false; // `activate` relancera la recherche
+  }
+
   private swap(): void {
     const a = this.fromPicker.value;
     const b = this.toPicker.value;
@@ -217,6 +237,7 @@ export class RoundtripView implements View {
     this.drawMap(from, to);
     loading(this.out, "Recherche des allers-retours possibles…");
     clear(this.summary);
+    this.onStateChange?.();
     if (this.modeSelect.value === "dates") return this.runDated(from, to);
     try {
       const [outbound, inbound] = await Promise.all([
