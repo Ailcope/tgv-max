@@ -21,6 +21,7 @@ export class ConnectionsView implements View {
   readonly emoji = "🔀";
   readonly hint = "quand le direct est complet";
   readonly element: HTMLElement;
+  onStateChange?: () => void;
 
   private readonly fromPicker: StationPicker;
   private readonly toPicker: StationPicker;
@@ -80,6 +81,22 @@ export class ConnectionsView implements View {
     void this.run();
   }
 
+  /** Le trajet et le jour ; les seuils de correspondance restent des réglages. */
+  state(): Record<string, string> {
+    return {
+      from: this.fromPicker.value ?? "",
+      to: this.toPicker.value ?? "",
+      date: this.dateInput.value,
+    };
+  }
+
+  restore(params: Record<string, string>): void {
+    if (params.from) this.fromPicker.set(params.from);
+    if (params.to) this.toPicker.set(params.to);
+    if (params.date) this.dateInput.value = params.date;
+    this.loaded = false; // `activate` relancera la recherche
+  }
+
   private swap(): void {
     const a = this.fromPicker.value;
     const b = this.toPicker.value;
@@ -101,6 +118,7 @@ export class ConnectionsView implements View {
     }
     loading(this.out, "Chargement des trains du jour puis recherche d'itinéraires…");
     clear(this.summary);
+    this.onStateChange?.();
     try {
       const trains = await this.repo.allTrainsOn(date);
       const journeys = planJourneys(trains, from, to, {

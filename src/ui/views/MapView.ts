@@ -29,6 +29,7 @@ export class MapView implements View {
   readonly emoji = "🗺️";
   readonly hint = "vue géographique";
   readonly element: HTMLElement;
+  onStateChange?: () => void;
 
   private readonly picker: StationPicker;
   private readonly modeSelect: HTMLSelectElement;
@@ -110,6 +111,30 @@ export class MapView implements View {
     setTimeout(() => this.handle.map.invalidateSize(), 60);
   }
 
+  /** Le sens, la gare, et la période regardée. */
+  state(): Record<string, string> {
+    const byDate = this.scopeSelect.value === "date";
+    return {
+      mode: this.mode(),
+      station: this.picker.value ?? "",
+      scope: this.scopeSelect.value,
+      // Inutile de trimballer une date que la vue n'utilise pas.
+      date: byDate ? this.dateInput.value : "",
+    };
+  }
+
+  restore(params: Record<string, string>): void {
+    if (params.mode === "to" || params.mode === "from") {
+      this.modeSelect.value = params.mode;
+      this.stationFieldLabel.textContent = params.mode === "to" ? "Arrivée" : "Départ";
+    }
+    if (params.station) this.picker.set(params.station);
+    if (params.scope === "date" || params.scope === "range") this.scopeSelect.value = params.scope;
+    if (params.date) this.dateInput.value = params.date;
+    this.toggleDateField();
+    this.loaded = false; // `activate` relancera la recherche
+  }
+
   private toggleDateField(): void {
     const dateField = this.dateInput.parentElement;
     if (dateField) dateField.style.display = this.scopeSelect.value === "date" ? "" : "none";
@@ -126,6 +151,7 @@ export class MapView implements View {
     if (!station) return;
     const mode = this.mode();
     clear(this.summary).appendChild(hint("Chargement de la carte…"));
+    this.onStateChange?.();
     try {
       const byDate = this.scopeSelect.value === "date";
       const data: MapDatum[] = [];

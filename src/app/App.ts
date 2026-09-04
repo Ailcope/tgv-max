@@ -2,6 +2,7 @@ import { KOFI_URL } from "@/config";
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { frDateTime } from "@/lib/dates";
+import { buildHash, parseHash, sameHash } from "@/lib/urlState";
 import { CommandPalette } from "@/ui/components/CommandPalette";
 import { KofiPanel } from "@/ui/components/KofiPanel";
 import { clear, el } from "@/ui/dom";
@@ -48,10 +49,19 @@ export class App {
       nav.appendChild(tab);
       view.element.classList.add("panel");
       panelsHost.appendChild(view.element);
+      // La vue annonce ses changements ; c'est l'application qui décide ce
+      // qu'elle en fait, ici tenir l'adresse de la page à jour.
+      view.onStateChange = () => this.publish(view);
     }
 
     const freshness = el("div", { class: "freshness" });
-    clear(this.root).append(this.header(nav), freshness, panelsHost, this.kofi.element, this.palette.element);
+    clear(this.root).append(
+      this.header(nav),
+      freshness,
+      panelsHost,
+      this.kofi.element,
+      this.palette.element,
+    );
 
     window.addEventListener("hashchange", () => this.activate(this.currentId()));
     window.addEventListener("keydown", (e) => {
@@ -66,22 +76,50 @@ export class App {
   }
 
   private currentId(): string {
-    const id = location.hash.slice(1);
+    const { id } = parseHash(location.hash);
     return this.views.some((v) => v.id === id) ? id : (this.views[0]?.id ?? "");
   }
 
   private navigate(id: string): void {
-    if (location.hash.slice(1) === id) this.activate(id);
+    if (parseHash(location.hash).id === id) this.activate(id);
     else location.hash = id; // triggers hashchange → activate
   }
 
   private activate(id: string): void {
+    const { params } = parseHash(location.hash);
     for (const view of this.views) {
       const isActive = view.id === id;
       this.tabs.get(view.id)?.classList.toggle("active", isActive);
       view.element.classList.toggle("active", isActive);
-      if (isActive) view.activate();
+      if (!isActive) continue;
+      // Une adresse qui porte une recherche l'emporte sur ce que la vue
+      // affichait : c'est tout l'intérêt d'un lien qu'on reçoit. On ne
+      // restaure toutefois que si l'adresse dit autre chose que l'écran, sinon
+      // un simple passage d'un onglet à l'autre relancerait la même requête.
+      const differs = !sameHash(location.hash, buildHash(view.id, view.state?.() ?? {}));
+      if (view.restore && differs && Object.keys(params).length) view.restore(params);
+      view.activate();
+      // Changer d'onglet réécrit l'ancre sans paramètres : on y remet aussitôt
+      // ce que la vue affiche, sinon l'adresse dit « carte » pendant que
+      // l'écran montre une recherche précise.
+      this.publish(view);
     }
+  }
+
+  /**
+   * Reporte la recherche d'une vue dans l'adresse de la page.
+   *
+   * `replaceState` plutôt qu'une écriture sur `location.hash` : la seconde
+   * déclenche un `hashchange`, donc une réactivation de la vue qui vient
+   * justement de se mettre à jour, et empile une entrée d'historique à chaque
+   * frappe. Le bouton « précédent » doit ramener à l'écran précédent, pas
+   * défaire un choix de gare caractère par caractère.
+   */
+  private publish(view: View): void {
+    if (!view.state || !view.element.classList.contains("active")) return;
+    const next = buildHash(view.id, view.state());
+    if (sameHash(location.hash, next)) return;
+    history.replaceState(null, "", next);
   }
 
   private header(nav: HTMLElement): HTMLElement {
@@ -98,8 +136,14 @@ export class App {
         el("button", {
           class: "btn-search",
           title: "Recherche rapide (⌘K / Ctrl+K)",
-          html: '🔍 <kbd>⌘K</kbd>',
+          html: "🔍 <kbd>⌘K</kbd>",
           onclick: () => this.palette.open(),
+        }),
+        el("button", {
+          class: "btn-share",
+          title: "Copier le lien de cette recherche",
+          text: "🔗 Partager",
+          onclick: (e: Event) => void this.share(e.currentTarget as HTMLElement),
         }),
         el("a", {
           class: "btn-kofi",
@@ -116,6 +160,26 @@ export class App {
       ]),
       nav,
     ]);
+  }
+
+  /**
+   * Copie l'adresse courante, qui porte désormais la recherche affichée.
+   *
+   * Le presse-papiers peut être refusé (page servie sans HTTPS, permission
+   * bloquée) : plutôt qu'un échec muet, le bouton dit alors quoi faire à la
+   * main. Dans les deux cas il reprend son intitulé au bout de deux secondes.
+   */
+  private async share(btn: HTMLElement): Promise<void> {
+    const label = btn.textContent ?? "";
+    try {
+      await navigator.clipboard.writeText(location.href);
+      btn.textContent = "✅ Lien copié";
+    } catch {
+      btn.textContent = "Copiez l'adresse de la page";
+    }
+    setTimeout(() => {
+      btn.textContent = label;
+    }, 2200);
   }
 
   private async showFreshness(box: HTMLElement): Promise<void> {

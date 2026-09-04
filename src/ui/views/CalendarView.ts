@@ -26,6 +26,7 @@ export class CalendarView implements View {
   readonly emoji = "📅";
   readonly hint = "30 jours pour un trajet";
   readonly element: HTMLElement;
+  onStateChange?: () => void;
 
   private readonly fromPicker: StationPicker;
   private readonly toPicker: StationPicker;
@@ -76,6 +77,17 @@ export class CalendarView implements View {
     void this.run();
   }
 
+  /** Ce qui définit la recherche affichée : le trajet. */
+  state(): Record<string, string> {
+    return { from: this.fromPicker.value ?? "", to: this.toPicker.value ?? "" };
+  }
+
+  restore(params: Record<string, string>): void {
+    if (params.from) this.fromPicker.set(params.from);
+    if (params.to) this.toPicker.set(params.to);
+    clear(this.grid); // vide la grille : `activate` relancera la recherche
+  }
+
   private swap(): void {
     const a = this.fromPicker.value;
     const b = this.toPicker.value;
@@ -102,6 +114,7 @@ export class CalendarView implements View {
     }
     loading(this.grid, "Calcul des disponibilités…");
     clear(this.summary);
+    this.onStateChange?.();
     try {
       const counts = await this.repo.dailyCounts(from, to);
       this.renderCalendar(from, to, counts);
