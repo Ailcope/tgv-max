@@ -41,6 +41,8 @@
   /* Hachures des jours hors fenêtre */
   --hatch-a: #fafafa;
   --hatch-b: #f0f0f0;
+  /* Fond de carte : voir la règle sur .leaflet-tile-pane. */
+  --map-filter: none;
   color-scheme: light;
   font-synthesis: none;
 }
@@ -87,6 +89,7 @@
     --heat-ink-4: #06220f;
     --hatch-a: #131b28;
     --hatch-b: #0f1723;
+    --map-filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.9) contrast(0.95);
   }
 }
 :root[data-theme="dark"] {
@@ -122,6 +125,7 @@
   --heat-ink-4: #06220f;
   --hatch-a: #131b28;
   --hatch-b: #0f1723;
+  --map-filter: invert(1) hue-rotate(180deg) saturate(0.3) brightness(0.9) contrast(0.95);
 }
 * {
   box-sizing: border-box;
@@ -833,9 +837,19 @@ a {
 .opin.dpin {
   font-size: 24px;
 }
+/* Le fond de carte est une image : aucune variable ne peut le retinter. En
+   thème sombre on inverse la teinte des tuiles, procédé habituel pour obtenir
+   un fond nocturne à partir d'un fond clair. Seules les tuiles sont touchées :
+   le réseau ferré est un calque vectoriel et garde ses couleurs de vitesse,
+   les marqueurs et les infobulles vivent dans d'autres calques. */
+.leaflet-tile-pane {
+  filter: var(--map-filter);
+}
+
 /* Légende du réseau ferré (couleur = vitesse) */
 .rail-legend {
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
   box-shadow: var(--shadow);
@@ -862,9 +876,35 @@ a {
   border-radius: 2px;
   flex: 0 0 auto;
 }
+/* Le reste de l'habillage Leaflet est écrit en dur dans sa feuille de style :
+   blanc, texte noir. Sur une carte devenue sombre, ces boîtes ressortaient
+   comme des trous de lumière, et le texte du site, lui, était devenu clair.
+   On les repasse donc sur les mêmes variables que le reste du site. */
+.leaflet-control-layers,
+.leaflet-bar a,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip,
+.leaflet-control-attribution {
+  background: var(--card);
+  color: var(--ink);
+}
+.leaflet-control-layers,
+.leaflet-popup-content-wrapper {
+  border: 1px solid var(--line);
+}
 .leaflet-control-layers {
   border-radius: 8px !important;
   box-shadow: var(--shadow) !important;
+}
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  border-bottom-color: var(--line);
+}
+.leaflet-bar a:hover {
+  background: var(--bg);
+}
+.leaflet-control-attribution a {
+  color: var(--violet);
 }
 .pop {
   font-size: 13px;
