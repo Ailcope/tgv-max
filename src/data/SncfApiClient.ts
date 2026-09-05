@@ -4,6 +4,13 @@ import type { DatasetMeta, RecordsResponse } from "./dto";
 /** A `fetch`-compatible function (injectable for testing). */
 export type FetchFn = typeof fetch;
 
+/** Maximum de lignes rendues par appel, imposé par l'API. */
+const PAGE_SIZE = 100;
+
+/** Pages demandées de front : assez pour charger une journée en quelques
+ *  secondes, assez peu pour rester poli avec une API publique et gratuite. */
+const PAGE_CONCURRENCY = 6;
+
 export interface RecordsQuery {
   select?: string;
   groupBy?: string;
@@ -41,16 +48,42 @@ export class SncfApiClient {
     return (await res.json()) as RecordsResponse<T>;
   }
 
-  /** Fetch every row for a query, paginating in pages of 100 up to `cap`. */
+  /**
+   * Fetch every row for a query, paginating up to `cap`.
+   *
+   * L'API rend cent lignes au maximum par appel, mais annonce le total dès la
+   * première réponse : les pages suivantes sont donc demandées de front plutôt
+   * qu'une par une. Une journée entière du jeu de données, c'est une soixantaine
+   * de pages ; en série, l'attente devenait telle qu'il fallait s'arrêter avant
+   * la fin, et une fenêtre tronquée se lit comme une absence de train.
+   *
+   * L'ordre est celui des offsets, pas celui des réponses : le tri demandé à
+   * l'API doit se retrouver dans le résultat.
+   */
   async all<T>(where: string, q: RecordsQuery = {}, cap = 2000): Promise<T[]> {
-    const out: T[] = [];
-    const limit = 100;
-    for (let offset = 0; offset < cap; offset += limit) {
-      const { results } = await this.records<T>(where, { ...q, limit, offset });
-      out.push(...results);
-      if (results.length < limit) break;
-    }
-    return out;
+    const first = await this.records<T>(where, { ...q, limit: PAGE_SIZE });
+    if (first.results.length < PAGE_SIZE) return first.results;
+
+    const total = Math.min(first.total_count, cap);
+    const offsets: number[] = [];
+    for (let offset = PAGE_SIZE; offset < total; offset += PAGE_SIZE) offsets.push(offset);
+
+    const pages: T[][] = Array.from({ length: offsets.length }, () => []);
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (let i = next++; i < offsets.length; i = next++) {
+        const { results } = await this.records<T>(where, {
+          ...q,
+          limit: PAGE_SIZE,
+          offset: offsets[i],
+        });
+        pages[i] = results;
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(PAGE_CONCURRENCY, offsets.length) }, () => worker()),
+    );
+    return [first.results, ...pages].flat().slice(0, cap);
   }
 
   /** Dataset metadata (used for the last-refresh timestamp). */
