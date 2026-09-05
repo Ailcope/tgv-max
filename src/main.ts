@@ -4,6 +4,7 @@ import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import { SncfApiClient } from "@/data/SncfApiClient";
 import { StationRepository } from "@/data/StationRepository";
 import { TgvmaxRepository } from "@/data/TgvmaxRepository";
+import { applyTheme, themeChoice } from "@/lib/theme";
 import { CalendarView } from "@/ui/views/CalendarView";
 import { ConnectionsView } from "@/ui/views/ConnectionsView";
 import { DestinationsView } from "@/ui/views/DestinationsView";
@@ -18,6 +19,10 @@ import { RoundtripView } from "@/ui/views/RoundtripView";
  */
 const root = document.getElementById("app");
 if (!root) throw new Error("Élément #app introuvable");
+
+// Le thème d'abord : sans cela, un visiteur qui a choisi « clair » sur une
+// machine réglée en sombre voit la page basculer sous ses yeux au chargement.
+applyTheme(themeChoice());
 
 const api = new SncfApiClient();
 const trips = new TgvmaxRepository(api);

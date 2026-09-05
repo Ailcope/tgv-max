@@ -2,6 +2,7 @@ import { KOFI_URL } from "@/config";
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { frDateTime } from "@/lib/dates";
+import { THEME_LABELS, themeChoice, toggleTheme } from "@/lib/theme";
 import { buildHash, parseHash, sameHash } from "@/lib/urlState";
 import { CommandPalette } from "@/ui/components/CommandPalette";
 import { KofiPanel } from "@/ui/components/KofiPanel";
@@ -175,6 +176,15 @@ export class App {
           title: "Copier le lien de cette recherche",
           text: "🔗 Partager",
           onclick: (e: Event) => void this.share(e.currentTarget as HTMLElement),
+        }),
+        el("button", {
+          class: "btn-theme",
+          title: "Thème : suivre le système, clair, ou sombre",
+          text: THEME_LABELS[themeChoice()],
+          onclick: (e: Event) => {
+            const btn = e.currentTarget as HTMLElement;
+            btn.textContent = THEME_LABELS[toggleTheme()];
+          },
         }),
         el("a", {
           class: "btn-kofi",

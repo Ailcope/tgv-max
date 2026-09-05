@@ -16,7 +16,112 @@
   --radius: 14px;
   --shadow: 0 2px 10px rgba(20, 33, 61, 0.08);
   --shadow-h: 0 6px 22px rgba(20, 33, 61, 0.16);
+  /* Dégradé de la barre supérieure, indépendant de --violet : elle reste
+     sombre dans les deux thèmes, c'est le fond de la page qui bascule. */
+  --top-a: #14213d;
+  --top-b: #1c3d63;
+  --top-c: #24507d;
+  /* Bandeau « données non temps réel » */
+  --warn-bg: #fff8e6;
+  --warn-line: #f2e4bd;
+  --warn-ink: #6b5200;
+  --warn-ink-strong: #5a3d00;
+  /* Échelle de chaleur, du vide au plein. Les paliers sont d'abord une échelle
+     de clarté : lus en niveaux de gris, ou par un œil qui distingue mal le
+     vert, ils restent ordonnés. La teinte n'ajoute que le confort. */
+  --heat-0: #fbfbfd;
+  --heat-1: #d9f2e0;
+  --heat-2: #a7e2b8;
+  --heat-3: #5cc47b;
+  --heat-4: #1a9d47;
+  --heat-ink-1: #2f8a4e;
+  --heat-ink-2: #1e6e3a;
+  --heat-ink-3: #12401f;
+  --heat-ink-4: #ffffff;
+  /* Hachures des jours hors fenêtre */
+  --hatch-a: #fafafa;
+  --hatch-b: #f0f0f0;
+  color-scheme: light;
   font-synthesis: none;
+}
+
+/* ---- Thème sombre ----
+   Deux entrées : le réglage du système, et le choix explicite du visiteur
+   (attribut `data-theme`, posé par `lib/theme.ts`). Le second l'emporte, d'où
+   le `:not([data-theme="light"])` sur la règle qui suit le système : sans lui,
+   « je veux ce site en clair » resterait sans effet sur une machine en sombre.
+
+   Seules les variables changent. Les règles, elles, ne connaissent que les
+   variables : c'est ce qui évite d'écrire deux fois la feuille de style. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --violet: #4f86c6;
+    --violet-d: #2b5f96;
+    --violet-l: #1b2c44;
+    --pink: #ff4fa3;
+    --ink: #e6ecf7;
+    --muted: #93a1bd;
+    --line: #26324a;
+    --bg: #0e1522;
+    --card: #161f30;
+    --ok: #4cc97a;
+    --ko: #ff6b81;
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    --shadow-h: 0 6px 22px rgba(0, 0, 0, 0.62);
+    --top-a: #0b1220;
+    --top-b: #14213d;
+    --top-c: #1b3a5f;
+    --warn-bg: #2a2312;
+    --warn-line: #4a3d1b;
+    --warn-ink: #e8d6a4;
+    --warn-ink-strong: #f6e9c4;
+    --heat-0: #131c2b;
+    --heat-1: #14382a;
+    --heat-2: #1a5a3c;
+    --heat-3: #237d51;
+    --heat-4: #31a76a;
+    --heat-ink-1: #79d3a1;
+    --heat-ink-2: #a8e7c2;
+    --heat-ink-3: #e2f8ec;
+    --heat-ink-4: #06220f;
+    --hatch-a: #131b28;
+    --hatch-b: #0f1723;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --violet: #4f86c6;
+  --violet-d: #2b5f96;
+  --violet-l: #1b2c44;
+  --pink: #ff4fa3;
+  --ink: #e6ecf7;
+  --muted: #93a1bd;
+  --line: #26324a;
+  --bg: #0e1522;
+  --card: #161f30;
+  --ok: #4cc97a;
+  --ko: #ff6b81;
+  --shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  --shadow-h: 0 6px 22px rgba(0, 0, 0, 0.62);
+  --top-a: #0b1220;
+  --top-b: #14213d;
+  --top-c: #1b3a5f;
+  --warn-bg: #2a2312;
+  --warn-line: #4a3d1b;
+  --warn-ink: #e8d6a4;
+  --warn-ink-strong: #f6e9c4;
+  --heat-0: #131c2b;
+  --heat-1: #14382a;
+  --heat-2: #1a5a3c;
+  --heat-3: #237d51;
+  --heat-4: #31a76a;
+  --heat-ink-1: #79d3a1;
+  --heat-ink-2: #a8e7c2;
+  --heat-ink-3: #e2f8ec;
+  --heat-ink-4: #06220f;
+  --hatch-a: #131b28;
+  --hatch-b: #0f1723;
 }
 * {
   box-sizing: border-box;
@@ -46,7 +151,7 @@ a {
 
 /* ---- Barre supérieure ---- */
 .topbar {
-  background: linear-gradient(120deg, var(--violet-d), var(--violet) 55%, #24507d);
+  background: linear-gradient(120deg, var(--top-a), var(--top-b) 55%, var(--top-c));
   color: #fff;
   padding: 18px 22px 0;
   box-shadow: 0 4px 20px rgba(60, 20, 120, 0.25);
@@ -155,9 +260,9 @@ a {
 /* ---- Conteneur ---- */
 /* Bandeau de fraîcheur des données (données non temps réel) */
 .freshness {
-  background: #fff8e6;
-  border-bottom: 1px solid #f2e4bd;
-  color: #6b5200;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-line);
+  color: var(--warn-ink);
   font-size: 12.5px;
   display: flex;
   justify-content: center;
@@ -170,7 +275,7 @@ a {
   display: none;
 }
 .freshness b {
-  color: #5a3d00;
+  color: var(--warn-ink-strong);
 }
 .fr-ico {
   font-size: 14px;
@@ -230,7 +335,7 @@ a {
   padding: 10px 11px;
   border: 1.5px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   height: 42px;
 }
@@ -269,7 +374,7 @@ a {
   font-size: 18px;
   cursor: pointer;
   border: 1.5px solid var(--line);
-  background: #fff;
+  background: var(--card);
   border-radius: 10px;
   color: var(--violet);
 }
@@ -288,7 +393,7 @@ a {
   height: 42px;
   border: 1.5px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--card);
 }
 .picker-input:focus {
   outline: none;
@@ -303,7 +408,7 @@ a {
   right: 0;
   max-height: 300px;
   overflow-y: auto;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-h);
@@ -343,7 +448,7 @@ a {
   padding: 7px 13px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
-  background: #fff;
+  background: var(--card);
   color: var(--ink);
   transition: all 0.12s;
 }
@@ -445,7 +550,13 @@ a {
 }
 .cell.out {
   opacity: 0.32;
-  background: repeating-linear-gradient(45deg, #fafafa, #fafafa 6px, #f0f0f0 6px, #f0f0f0 12px);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--hatch-a),
+    var(--hatch-a) 6px,
+    var(--hatch-b) 6px,
+    var(--hatch-b) 12px
+  );
 }
 .cell.has {
   cursor: pointer;
@@ -483,35 +594,36 @@ a {
 }
 /* niveaux de chaleur (partagés avec la légende) */
 .lvl0 {
-  background: #fbfbfd;
+  background: var(--heat-0);
 }
 .lvl1 {
-  background: #d9f2e0;
+  background: var(--heat-1);
 }
 .lvl1 .cell-n {
-  color: #2f8a4e;
+  color: var(--heat-ink-1);
 }
 .lvl2 {
-  background: #a7e2b8;
+  background: var(--heat-2);
 }
 .lvl2 .cell-n {
-  color: #1e6e3a;
+  color: var(--heat-ink-2);
 }
 .lvl3 {
-  background: #5cc47b;
+  background: var(--heat-3);
 }
 .lvl3 .cell-n {
-  color: #12401f;
+  color: var(--heat-ink-3);
 }
 .lvl4 {
-  background: #1a9d47;
+  background: var(--heat-4);
 }
 .lvl4 .cell-n,
 .lvl4 .cell-num {
-  color: #fff;
+  color: var(--heat-ink-4);
 }
 .lvl4 .cell-mon {
-  color: #eafff0;
+  color: var(--heat-ink-4);
+  opacity: 0.85;
 }
 
 /* ---- Détail / liste de trains ---- */
@@ -906,8 +1018,26 @@ a {
 }
 
 /* ---- Bouton de soutien (Ko-fi) ---- */
+/* Bascule de thème : même habillage que les deux autres boutons de la barre,
+   c'est le libellé qui change et qui dit l'état courant. */
+.btn-theme {
+  align-self: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.btn-theme:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
 .btn-kofi {
-  margin-left: auto;
   align-self: center;
   background: rgba(255, 255, 255, 0.12);
   border: 1.5px solid rgba(255, 255, 255, 0.35);
@@ -1245,6 +1375,13 @@ a {
   }
   .brand h1 {
     font-size: 20px;
+  }
+  /* Le bouton Ko-fi passe en absolu : la bascule de thème devient le dernier
+     élément du flux, et se cale donc à droite du titre. */
+  .btn-theme {
+    margin-left: auto;
+    padding: 6px 10px;
+    font-size: 12px;
   }
   .tab-txt small {
     display: none;
