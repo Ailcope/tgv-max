@@ -43,16 +43,25 @@ export class App {
   }
 
   mount(): void {
-    const nav = el("nav", { class: "tabs" });
+    const nav = el("nav", { class: "tabs", role: "tablist" });
     const panelsHost = el("main", { class: "wrap" });
     for (const view of this.views) {
-      const tab = el("button", { class: "tab", onclick: () => this.navigate(view.id) }, [
-        el("span", { class: "tab-emoji", text: view.emoji }),
-        el("span", { class: "tab-txt" }, [
-          el("b", { text: view.label }),
-          el("small", { text: view.hint }),
-        ]),
-      ]);
+      const tab = el(
+        "button",
+        {
+          class: "tab",
+          role: "tab",
+          title: `${view.label} · ${view.hint}`, // le sous-titre disparaît sur petit écran
+          onclick: () => this.navigate(view.id),
+        },
+        [
+          el("span", { class: "tab-emoji", text: view.emoji }),
+          el("span", { class: "tab-txt" }, [
+            el("b", { text: view.label }),
+            el("small", { text: view.hint }),
+          ]),
+        ],
+      );
       this.tabs.set(view.id, tab);
       nav.appendChild(tab);
       view.element.classList.add("panel");
@@ -97,9 +106,12 @@ export class App {
     const { params } = parseHash(location.hash);
     for (const view of this.views) {
       const isActive = view.id === id;
-      this.tabs.get(view.id)?.classList.toggle("active", isActive);
+      const tab = this.tabs.get(view.id);
+      tab?.classList.toggle("active", isActive);
+      tab?.setAttribute("aria-selected", String(isActive));
       view.element.classList.toggle("active", isActive);
       if (!isActive) continue;
+      this.reveal(tab);
       // Une adresse qui porte une recherche l'emporte sur ce que la vue
       // affichait : c'est tout l'intérêt d'un lien qu'on reçoit. On ne
       // restaure toutefois que si l'adresse dit autre chose que l'écran, sinon
@@ -128,6 +140,17 @@ export class App {
     const next = buildHash(view.id, view.state());
     if (sameHash(location.hash, next)) return;
     history.replaceState(null, "", next);
+  }
+
+  /**
+   * Ramène l'onglet actif dans la partie visible de la barre.
+   *
+   * Sur un écran étroit la barre défile horizontalement : sans cela, l'onglet
+   * ouvert par un lien reçu ou par la palette peut se trouver hors champ, et
+   * la page semble n'avoir rien fait.
+   */
+  private reveal(tab?: HTMLElement): void {
+    tab?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   private header(nav: HTMLElement): HTMLElement {
