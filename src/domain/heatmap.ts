@@ -85,6 +85,18 @@ export function buildHeatmap(counts: StationDateCount[], dates: string[], limit 
     .slice(0, limit);
 }
 
+/**
+ * Le nombre de gares desservies sur la fenêtre, avant que `buildHeatmap` ne
+ * coupe la queue de distribution. Annoncer « 40 gares » quand il y en a deux
+ * cents ferait passer une limite d'affichage pour une limite de l'offre.
+ */
+export function countStations(counts: StationDateCount[], dates: string[]): number {
+  const window = new Set(dates);
+  const stations = new Set<string>();
+  for (const c of counts) if (window.has(c.date) && c.trains > 0) stations.add(c.station);
+  return stations.size;
+}
+
 /** Le plus gros compte du tableau, qui sert d'échelle à la légende. */
 export function heatPeak(rows: HeatRow[]): number {
   let peak = 0;

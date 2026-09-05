@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildHeatmap, heatDates, heatPeak, type StationDateCount } from "@/domain/heatmap";
+import {
+  buildHeatmap,
+  countStations,
+  heatDates,
+  heatPeak,
+  type StationDateCount,
+} from "@/domain/heatmap";
 
 const count = (station: string, date: string, trains: number): StationDateCount => ({
   station,
@@ -76,6 +82,24 @@ describe("buildHeatmap", () => {
 
   it("ne garde pas une gare dont tous les comptages sont nuls", () => {
     expect(buildHeatmap([count("LYON (intramuros)", "2026-09-05", 0)], dates)).toEqual([]);
+  });
+});
+
+describe("countStations", () => {
+  it("compte les gares desservies, sans la coupe d'affichage", () => {
+    const many = Array.from({ length: 60 }, (_, i) => count(`GARE ${i}`, "2026-09-05", 1));
+    expect(buildHeatmap(many, ["2026-09-05"], 40)).toHaveLength(40);
+    expect(countStations(many, ["2026-09-05"])).toBe(60);
+  });
+
+  it("ignore le hors-fenêtre et les comptages nuls, et ne compte qu'une fois par gare", () => {
+    const counts = [
+      count("LYON (intramuros)", "2026-09-05", 3),
+      count("LYON (intramuros)", "2026-09-06", 2),
+      count("BREST", "2026-09-06", 0),
+      count("NICE VILLE", "2026-10-30", 5),
+    ];
+    expect(countStations(counts, ["2026-09-05", "2026-09-06"])).toBe(1);
   });
 });
 
