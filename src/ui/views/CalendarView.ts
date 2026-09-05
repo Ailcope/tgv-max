@@ -9,6 +9,7 @@ import { fastestTrain, sortTrains, type TrainSort } from "@/domain/sorting";
 import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { Latest } from "@/lib/latest";
+import { isPinned, pinnedTrips, togglePinnedTrip, tripKey } from "@/lib/pinned";
 import { prettyStation } from "@/lib/text";
 import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { StationPair } from "../components/StationPair";
@@ -50,6 +51,7 @@ export class CalendarView implements View {
   private dayDate = "";
   private readonly dayList = el("div", { class: "train-list" });
   private readonly daySub = el("span", { class: "detail-sub" });
+  private readonly pins = el("div", { class: "chips pins" });
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -82,11 +84,13 @@ export class CalendarView implements View {
     hourFilter.subscribe(() => this.renderDayList());
     this.element = el("section", { class: "panel" }, [
       controls,
+      this.pins,
       this.summary,
       this.legend(),
       this.grid,
       this.detail,
     ]);
+    this.renderPins();
   }
 
   activate(): void {
@@ -112,6 +116,7 @@ export class CalendarView implements View {
   private async run(): Promise<void> {
     const from = this.pair.fromValue;
     const to = this.pair.toValue;
+    this.renderPins(); // l'étoile doit dire l'état du trajet affiché
     clear(this.detail);
     if (!from || !to) {
       this.latest.cancel();
@@ -294,6 +299,38 @@ export class CalendarView implements View {
     clear(this.dayList).append(
       ...sortTrains(kept, order).map((t) => trainRow(t, false, t === fastest)),
     );
+  }
+
+  /**
+   * La barre des trajets épinglés : un bouton par trajet retenu, plus celui
+   * qui épingle ou retire le trajet affiché.
+   *
+   * Elle est redessinée à chaque changement de trajet, parce que l'étoile doit
+   * dire l'état du trajet affiché, pas celui d'il y a deux recherches.
+   */
+  private renderPins(): void {
+    const trip = { from: this.pair.fromValue ?? "", to: this.pair.toValue ?? "" };
+    const list = pinnedTrips();
+    const pinned = isPinned(list, trip);
+    clear(this.pins);
+    for (const t of list) {
+      if (tripKey(t) === tripKey(trip)) continue; // celui-ci est déjà à l'écran
+      this.pins.appendChild(
+        button(`${prettyStation(t.from)} → ${prettyStation(t.to)}`, "chip", () => {
+          this.pair.set(t.from, t.to);
+          void this.run();
+        }),
+      );
+    }
+    if (trip.from && trip.to && trip.from !== trip.to) {
+      const label = pinned ? "★ Épinglé" : "☆ Épingler ce trajet";
+      const star = button(label, `chip chip-pin${pinned ? " on" : ""}`, () => {
+        togglePinnedTrip(trip);
+        this.renderPins();
+      });
+      star.title = pinned ? "Retirer des trajets épinglés" : "Garder ce trajet sous la main";
+      this.pins.appendChild(star);
+    }
   }
 
   private legend(): HTMLElement {
