@@ -1237,3 +1237,26 @@ a {
   letter-spacing: 0.04em;
   color: var(--muted);
 }
+
+/* ============ Trajets épinglés ============ */
+/* La barre des trajets gardés sous la main, sous le bandeau de recherche.
+   Vide, elle ne prend aucune place. */
+.pins:empty {
+  display: none;
+}
+.chip-pin {
+  border-color: var(--pink);
+  color: var(--pink);
+  font-weight: 700;
+}
+.chip-pin.on {
+  background: var(--pink);
+  color: #fff;
+}
+.chip-pin:hover {
+  border-color: var(--pink);
+  color: var(--pink);
+}
+.chip-pin.on:hover {
+  color: #fff;
+}
