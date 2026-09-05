@@ -34,7 +34,7 @@ export class CommandPalette {
       this.crumb,
       this.input,
       this.list,
-      el("p", { class: "cp-help", html: "<b>↑↓</b> naviguer · <b>Entrée</b> choisir · <b>Échap</b> fermer — 2ᵉ étape : Entrée sans destination = « Où partir ? »" }),
+      el("p", { class: "cp-help", html: "<b>↑↓</b> naviguer · <b>Entrée</b> choisir · <b>Échap</b> fermer · 2ᵉ étape : Entrée sans destination = « Où partir ? »" }),
     ]);
     this.element = el("div", { class: "cp-overlay hidden" }, [box]);
     this.element.addEventListener("click", (e) => {
@@ -98,7 +98,7 @@ export class CommandPalette {
       el("span", { class: "cp-tag", text: `Départ : ${prettyStation(origin.name)}` }),
     );
     this.input.value = "";
-    this.input.placeholder = "Destination (optionnel — Entrée pour passer)…";
+    this.input.placeholder = "Destination (facultatif, Entrée pour passer)…";
     this.render(this.stations.search(""));
   }
 

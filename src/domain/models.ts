@@ -2,13 +2,13 @@
 
 /** A station/city as presented to the user (one entry per city name). */
 export interface Station {
-  /** Raw SNCF name, e.g. `"PARIS (intramuros)"` — used to query the API. */
+  /** Raw SNCF name, e.g. `"PARIS (intramuros)"`, used to query the API. */
   name: string;
   lat: number;
   lon: number;
   /** ISO country code prefix, e.g. `"FR"`, `"DE"`. */
   country: string;
-  /** tgvmax occurrence count — used to rank the picker. */
+  /** tgvmax occurrence count, used to rank the picker. */
   traffic: number;
   /** Annual ridership (passengers/year); `0` when unknown (e.g. foreign stations). */
   ridership: number;

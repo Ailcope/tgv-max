@@ -107,7 +107,7 @@ export class MapView implements View {
       this.summary,
       el("div", { class: "map-wrap" }, [this.mapEl]),
       hint(
-        "Survolez une gare pour la mettre en avant, cliquez pour les détails. Fond : vraies lignes SNCF colorées par vitesse (LGV en rose) — couches en haut à droite.",
+        "Survolez une gare pour la mettre en avant, cliquez pour les détails. Le fond montre les vraies lignes SNCF, colorées par vitesse (LGV en rose) ; les couches se règlent en haut à droite.",
       ),
     ]);
 
@@ -226,7 +226,7 @@ export class MapView implements View {
         html:
           `<b>${data.length}</b> ${noun}${data.length > 1 ? "s" : ""} avec place MAX ${mode === "to" ? "vers" : "depuis"} <b>${prettyStation(stationName)}</b> · ` +
           (byDate ? frDateLong(this.dateInput.value) : "30 prochains jours") +
-          (data.length ? "" : ' — <span class="ko">rien trouvé</span>'),
+          (data.length ? "" : ' · <span class="ko">rien trouvé</span>'),
       }),
     );
     this.handle.map.invalidateSize();

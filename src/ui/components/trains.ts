@@ -8,7 +8,7 @@ import { el } from "../dom";
 export function axisBadge(axis: string): HTMLElement {
   const a = (axis || "").toUpperCase();
   let cls = "axe";
-  let label = axis || "—";
+  let label = axis || "axe inconnu";
   if (a.includes("NUIT")) {
     cls += " axe-nuit";
     label = "🌙 " + label;

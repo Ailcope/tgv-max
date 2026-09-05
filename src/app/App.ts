@@ -10,7 +10,7 @@ import type { View } from "@/ui/views/View";
 
 /**
  * Application shell: builds the layout, wires hash-based tab routing, and shows
- * the data-freshness banner. Views are injected — App knows nothing about them
+ * the data-freshness banner. Views are injected; App knows nothing about them
  * beyond the {@link View} contract. The footer and the SEO/FAQ section live as
  * static HTML in `index.html` so search engines index them without JS.
  */
@@ -99,7 +99,7 @@ export class App {
           el("h1", { html: 'TGV <span class="max">MAX</span> Planner' }),
           el("p", {
             class: "tagline",
-            text: "Vos places MAX, enfin lisibles — sur 30 jours, par destination, sur une carte.",
+            text: "Vos places MAX, enfin lisibles : sur 30 jours, par destination, sur une carte.",
           }),
         ]),
         el("button", {
