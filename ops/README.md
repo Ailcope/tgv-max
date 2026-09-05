@@ -63,6 +63,8 @@ ouvert au prochain passage.
 - **Répéter qu'un train est presque plein** : seule la traversée du seuil est
   signalée. Un train à trois places l'annonce une fois, pas tous les matins
   jusqu'à ce qu'il soit complet.
+- **Confondre « rarement libre » et « pas encore regardé »** : un trajet sans
+  train est enregistré à zéro dans l'historique, il n'est pas simplement absent.
 
 ## Le seuil de places
 
@@ -74,3 +76,28 @@ refuse les appels extérieurs et se joint donc par le relais.
 
 C'est un supplément, pas une dépendance : `relay_url` absent, ou relais en
 panne, et le script continue d'annoncer les ouvertures et les disparitions.
+
+## L'historique des trajets suivis
+
+Une place qui s'ouvre ne dit pas si elle est banale ou exceptionnelle. Sur un
+trajet libre tous les matins, l'alerte est du bruit ; sur un trajet complet
+depuis trois semaines, c'est le message qu'on attendait.
+
+Le script enregistre donc un relevé par passage et par trajet suivi, dans
+`state.json` : le nombre de trains trouvés, et le creux du jour quand le relais
+des places libres répond. Deux mois d'historique sont conservés, à raison d'un
+point par jour et par trajet ; deux passages le même jour ne comptent qu'une
+fois.
+
+Chaque notification porte alors une ligne par trajet, du genre « libre 11 fois
+sur 14 relevés ». Un trajet sans train est enregistré à zéro : c'est ce qui
+distingue « rarement libre » de « pas encore regardé ».
+
+Pour consulter l'historique sans déclencher de recherche :
+
+```
+python3 watch.py --historique
+```
+
+Chaque trajet sort avec une barre par passage, du plus ancien au plus récent,
+un point valant « aucune place ce jour-là ».

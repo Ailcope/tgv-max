@@ -30,6 +30,10 @@ TIMEOUT = 30
 
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 
+# Deux mois de releves : assez pour dire si un train est habituellement libre,
+# assez peu pour que l'etat reste un petit fichier.
+HISTORY_MAX = 60
+
 
 def get_json(url: str) -> dict:
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -302,14 +306,96 @@ def tightening(
     return seats, tight
 
 
+def observations(matched: list[tuple[str, dict, dict]], seats: dict[str, int]) -> dict[str, dict]:
+    """Ce qu'on a vu ce matin, une ligne par trajet suivi.
+
+    `n` est le nombre de trains qui correspondent a la regle, `s` le nombre de
+    places sur le plus juste d'entre eux quand le relais a repondu.
+    """
+    stats: dict[str, dict] = {}
+    for entry_key, rule, _train in matched:
+        row = stats.setdefault(rule["name"], {"n": 0, "s": None})
+        row["n"] += 1
+        count = seats.get(entry_key)
+        if count is not None:
+            row["s"] = count if row["s"] is None else min(row["s"], count)
+    return stats
+
+
+def update_history(history: dict, stats: dict[str, dict], day: str, rules: list[dict]) -> dict:
+    """Ajoute le releve du jour, un seul par date et par trajet.
+
+    Un trajet sans train ce matin merite d'etre enregistre a zero : c'est
+    justement ce qui distingue « rarement libre » de « pas encore regarde ».
+    Deux passages le meme jour ne comptent qu'une fois, le dernier gagne.
+    """
+    out = {name: list(points) for name, points in history.items()}
+    for rule in rules:
+        name = rule["name"]
+        seen = stats.get(name, {"n": 0, "s": None})
+        points = [p for p in out.get(name, []) if p.get("d") != day]
+        points.append({"d": day, "n": seen["n"], "s": seen["s"]})
+        out[name] = points[-HISTORY_MAX:]
+    return out
+
+
+def trend(points: list[dict]) -> str:
+    """« libre 11 fois sur 14 relevés » : la phrase qui manque a une alerte."""
+    if not points:
+        return "aucun relevé"
+    total = len(points)
+    free = sum(1 for p in points if p.get("n"))
+    releves = f"{total} relevé{'s' if total > 1 else ''}"
+    if not free:
+        return f"jamais libre sur {releves}"
+    if free == total:
+        return f"libre à chaque passage ({releves})"
+    return f"libre {free} fois sur {releves}"
+
+
+def spark(points: list[dict], width: int = 30) -> str:
+    """Les derniers relevés en une ligne : une barre par passage, du plus ancien."""
+    last = points[-width:]
+    if not last:
+        return ""
+    top = max((p.get("n") or 0) for p in last) or 1
+    blocks = "▁▂▃▄▅▆▇█"
+    return "".join(
+        "·" if not p.get("n") else blocks[min(len(blocks) - 1, (p["n"] * len(blocks) - 1) // top)]
+        for p in last
+    )
+
+
+def show_history() -> int:
+    """Sortie de `--historique` : ce que le suivi a vu, trajet par trajet."""
+    if not STATE.exists():
+        print("Aucun état : le script n'a pas encore tourné.")
+        return 0
+    history = json.loads(STATE.read_text(encoding="utf-8")).get("history", {})
+    if not history:
+        print("Aucun historique : il se remplit à raison d'un relevé par passage.")
+        return 0
+    for name in sorted(history):
+        points = history[name]
+        seats = [p["s"] for p in points if p.get("s") is not None]
+        detail = f" · au plus bas : {min(seats)} place(s)" if seats else ""
+        print(f"{name}")
+        print(f"  {spark(points)}  {trend(points)}{detail}")
+    return 0
+
+
 def main() -> int:
+    if "--historique" in sys.argv[1:]:
+        return show_history()
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     previous: dict[str, str] = {}
     previous_seats: dict[str, int] = {}
+    history: dict[str, list[dict]] = {}
     if STATE.exists():
         saved = json.loads(STATE.read_text(encoding="utf-8"))
         previous = saved.get("seen", {})
         previous_seats = saved.get("seats", {})
+        history = saved.get("history", {})
 
     current: dict[str, str] = {}
     matched: list[tuple[str, dict, dict]] = []
@@ -343,6 +429,7 @@ def main() -> int:
     }
     new = {k: v for k, v in current.items() if k not in previous}
     seats, tight = tightening(cfg, matched, previous_seats)
+    history = update_history(history, observations(matched, seats), today, cfg["watch"])
 
     if new or gone or tight:
         lines = []
@@ -362,6 +449,14 @@ def main() -> int:
                 f"  ! {current[k]} · {n} place(s) restante(s)"
                 for k, n in sorted(tight.items(), key=lambda kv: (kv[1], current[kv[0]]))
             ]
+        # Une ouverture ne dit pas si elle est banale ou exceptionnelle sur ce
+        # trajet. L'historique repond a la question sans qu'on ait a la poser.
+        lines.append("")
+        lines.append("HABITUDE DE CES TRAJETS :")
+        lines += [
+            f"  {name} · {trend(history.get(name, []))}"
+            for name in sorted(rule["name"] for rule in cfg["watch"])
+        ]
         lines.append("")
         lines.append(f"Export du dataset : {dataset_timestamp() or 'inconnu'}")
         lines.append("Reserver : https://www.sncf-connect.com/")
@@ -395,6 +490,8 @@ def main() -> int:
         print(body)
     else:
         print(f"Aucun changement ({len(current)} place(s) suivie(s)).")
+        for name in sorted(rule["name"] for rule in cfg["watch"]):
+            print(f"  {name} · {trend(history.get(name, []))}")
 
     STATE.write_text(
         json.dumps(
@@ -402,6 +499,7 @@ def main() -> int:
                 "updated": dt.datetime.now().isoformat(timespec="seconds"),
                 "seen": current,
                 "seats": seats,
+                "history": history,
             },
             ensure_ascii=False,
             indent=2,
