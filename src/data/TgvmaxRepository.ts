@@ -63,20 +63,29 @@ interface StationDateRow {
 
 /** Domain-level access to TGV MAX availability, built on top of {@link SncfApiClient}. */
 export class TgvmaxRepository {
-  /** Per-date cache of the full day dump (~2 000 rows), used by the journey planner. */
+  /** Per-date cache of the full day dump, used by the journey planner. */
   private readonly dayCache = new Map<string, Promise<Train[]>>();
   /** Per-O/D cache of the dominant station-code pair (see {@link codePair}). */
   private readonly codeCache = new Map<string, Promise<[string, string] | null>>();
 
   constructor(private readonly api: SncfApiClient) {}
 
-  /** Every MAX train of one date, all origins/destinations (memoized). */
+  /**
+   * Every MAX train of one date, all origins/destinations (memoized).
+   *
+   * Le plafond doit couvrir la journée entière : une circulation début septembre
+   * 2026 en compte près de 6 000 avec une place MAX. À 4 000, le tri par heure
+   * de départ coupait tout ce qui partait après 17 h, et la recherche
+   * d'itinéraires concluait « aucun train » sur les trajets du soir. Le plafond
+   * ne coûte rien tant qu'il n'est pas atteint : les pages sont demandées
+   * d'après le total annoncé, pas d'après lui.
+   */
   allTrainsOn(date: string): Promise<Train[]> {
     let cached = this.dayCache.get(date);
     if (!cached) {
       const where = and(filters.onDate(date), filters.maxSeat());
       cached = this.api
-        .all<RawTgvmaxRecord>(where, { select: TRAIN_FIELDS, orderBy: "heure_depart" }, 4000)
+        .all<RawTgvmaxRecord>(where, { select: TRAIN_FIELDS, orderBy: "heure_depart" }, 12000)
         .then((rows) => rows.map(toTrain));
       this.dayCache.set(date, cached);
       cached.catch(() => this.dayCache.delete(date)); // ne pas mettre en cache un échec
