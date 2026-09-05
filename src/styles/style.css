@@ -1614,3 +1614,23 @@ a {
     animation: none;
   }
 }
+
+/* ============ Durée du trajet ============ */
+/* Le tri de la liste du jour, posé dans son en-tête : plus petit qu'un champ
+   du bandeau de recherche, il ne prétend pas au même rang. */
+.sel-sm {
+  height: 34px;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.t-dur-best {
+  background: var(--violet-l);
+  color: var(--violet-d);
+  font-weight: 700;
+}
+.t-best {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ok);
+  white-space: nowrap;
+}
