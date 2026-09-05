@@ -16,7 +16,7 @@ import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, loading, skeleton } from "../components/states";
 import { alertBox } from "../components/tension";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, select } from "../dom";
+import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -46,6 +46,8 @@ export class CalendarView implements View {
   /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
   private readonly latest = new Latest();
   private readonly daySortSelect: HTMLSelectElement;
+  private readonly minSeatsSelect: HTMLSelectElement;
+  private readonly minSeatsField: HTMLElement;
   /** Les trains du jour ouvert, gardés pour refiltrer et réordonner sans requête. */
   private dayTrains: Train[] = [];
   private dayDate = "";
@@ -73,10 +75,23 @@ export class CalendarView implements View {
       () => this.renderDayList(),
     );
     this.daySortSelect.classList.add("sel-sm");
+    this.minSeatsSelect = select(
+      [
+        ["1", "au moins 1 place"],
+        ["2", "au moins 2 places"],
+        ["4", "au moins 4 places"],
+      ],
+      () => this.renderDayList(),
+    );
+    // Le champ n'a de sens que si le nombre de places est connu : sans relais,
+    // il proposerait un filtre qui ne filtre rien.
+    this.minSeatsField = field("Voyageurs", this.minSeatsSelect);
+    if (!this.freePlaces?.enabled) this.minSeatsField.style.display = "none";
 
     const controls = el("div", { class: "controls" }, [
       ...this.pair.nodes,
       ...hourFields(),
+      this.minSeatsField,
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
     // La plage horaire est commune à tous les écrans : quand elle change
@@ -282,18 +297,29 @@ export class CalendarView implements View {
   }
 
   /**
-   * (Re)dessine la liste du jour ouvert : plage horaire, puis ordre demandé.
+   * (Re)dessine la liste du jour ouvert : plage horaire, nombre de places
+   * demandé, puis ordre choisi.
    *
-   * Ni le filtre ni le tri ne relancent de requête, les trains du jour sont
-   * déjà là. Ce qui est écarté par la plage est compté et dit, sinon une liste
-   * vidée par un réglage se lirait comme une absence de place. Le trajet le
-   * plus court est désigné parmi ceux qui restent, dans les deux ordres.
+   * Rien de tout cela ne relance de requête, les trains du jour sont déjà là.
+   * Ce qui est écarté est compté et dit, sinon une liste vidée par un réglage
+   * se lirait comme une absence de place. Le trajet le plus court est désigné
+   * parmi ceux qui restent, dans les deux ordres.
+   *
+   * Un train dont le nombre de places est inconnu reste affiché : le MAX
+   * Planner et le jeu de données ouvert ne recensent pas exactement les mêmes
+   * circulations, et « inconnu » ne veut pas dire « complet ». Le filtre écarte
+   * ce qu'on sait insuffisant, jamais ce qu'on ignore.
    */
   private renderDayList(): void {
     if (!this.dayDate) return;
-    const kept = this.dayTrains.filter((t) => trainWithinHours(t, hourFilter.value));
+    const min = Number(this.minSeatsSelect.value);
+    const inHours = this.dayTrains.filter((t) => trainWithinHours(t, hourFilter.value));
+    const kept = inHours.filter((t) => t.seats === undefined || t.seats >= min);
+    const short = inHours.length - kept.length;
     this.daySub.textContent =
-      `${kept.length} trajet(s) avec place MAX` + hoursNote(this.dayTrains.length - kept.length);
+      `${kept.length} trajet(s) avec place MAX` +
+      hoursNote(this.dayTrains.length - inHours.length) +
+      (short ? ` · ${short} sous ${min} place${min > 1 ? "s" : ""}` : "");
     const fastest = kept.length > 1 ? fastestTrain(kept) : null;
     const order = this.daySortSelect.value as TrainSort;
     clear(this.dayList).append(
