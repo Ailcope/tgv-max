@@ -6,9 +6,10 @@ import { heatLevel } from "@/domain/availability";
 import type { DailyCounts, DaySeats, SeatsByDate } from "@/domain/models";
 import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
+import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
-import { empty, errorState, loading } from "../components/states";
+import { DATASET_WINDOW, empty, errorState, loading, skeleton } from "../components/states";
 import { alertBox } from "../components/tension";
 import { reserveButton, trainRow } from "../components/trains";
 import { button, clear, el, field } from "../dom";
@@ -39,6 +40,8 @@ export class CalendarView implements View {
   private readonly detail = el("div", { class: "detail" });
   /** Places restantes du dernier affichage, vide quand le relais est absent. */
   private seats: SeatsByDate = {};
+  /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
+  private readonly latest = new Latest();
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -110,21 +113,25 @@ export class CalendarView implements View {
     const to = this.toPicker.value;
     clear(this.detail);
     if (!from || !to) {
+      this.latest.cancel();
       empty(this.summary, "Choisissez une gare de départ et d'arrivée.");
       clear(this.grid);
       return;
     }
     if (from === to) {
-      empty(this.summary, "Départ et arrivée identiques.");
+      this.latest.cancel();
+      empty(this.summary, "Départ et arrivée identiques.", "Choisissez deux gares différentes.");
       clear(this.grid);
       return;
     }
-    loading(this.grid, "Calcul des disponibilités…");
+    const isCurrent = this.latest.begin();
+    skeleton(this.grid, "calendar");
     clear(this.summary);
     this.seats = {};
     this.onStateChange?.();
     try {
       const counts = await this.repo.dailyCounts(from, to);
+      if (!isCurrent()) return; // une recherche plus récente est passée devant
       // La grille s'affiche tout de suite avec le nombre de trains ; les places
       // arrivent après, en second passage. Le calendrier n'attend pas après un
       // service tiers qui peut être lent, ou absent.
@@ -135,6 +142,7 @@ export class CalendarView implements View {
         this.renderCalendar(from, to, counts);
       }
     } catch (e) {
+      if (!isCurrent()) return;
       errorState(this.grid, `Impossible de récupérer les données (${(e as Error).message}).`);
     }
   }
@@ -224,6 +232,10 @@ export class CalendarView implements View {
       d = addDays(d, 1);
     }
     this.grid.appendChild(body);
+    // Une grille entièrement vide n'est pas forcément une absence de trains :
+    // ce peut être une fenêtre pas encore ouverte à la vente. Le dire évite de
+    // conclure trop vite que le site s'est trompé.
+    if (!days) this.grid.appendChild(el("p", { class: "state-why", text: DATASET_WINDOW }));
   }
 
   private async showDay(from: string, to: string, date: string, cell: HTMLElement): Promise<void> {

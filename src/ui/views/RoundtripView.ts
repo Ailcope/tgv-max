@@ -14,10 +14,11 @@ import {
 } from "@/domain/roundtrip";
 import { durationMinutes, formatDuration, hhmmToMinutes } from "@/domain/time";
 import { addDays, DOWS, frDate, frDateLong, iso, parseISO, today } from "@/lib/dates";
+import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
 import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
-import { empty, errorState, loading } from "../components/states";
+import { empty, errorState, loading, skeleton } from "../components/states";
 import { axisBadge, legReserveLink } from "../components/trains";
 import { button, clear, el, field } from "../dom";
 import { createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
@@ -49,6 +50,8 @@ export class RoundtripView implements View {
   private readonly out = el("div", { class: "rt-list" });
   private readonly handle: MapHandle;
   private loaded = false;
+  /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
+  private readonly latest = new Latest();
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -230,12 +233,14 @@ export class RoundtripView implements View {
     const from = this.fromPicker.value;
     const to = this.toPicker.value;
     if (!from || !to || from === to) {
+      this.latest.cancel();
       empty(this.summary, "Choisissez deux gares différentes.");
       clear(this.out);
       return;
     }
     this.drawMap(from, to);
-    loading(this.out, "Recherche des allers-retours possibles…");
+    const isCurrent = this.latest.begin();
+    skeleton(this.out, "rows", 4);
     clear(this.summary);
     this.onStateChange?.();
     if (this.modeSelect.value === "dates") return this.runDated(from, to);
@@ -254,10 +259,12 @@ export class RoundtripView implements View {
         groupByDate(inbound),
         (t) => !late || hhmmToMinutes(t.departure) <= late,
       );
+      if (!isCurrent()) return; // une recherche plus récente est passée devant
       this.loaded = true;
       if (this.modeSelect.value === "day") this.renderDay(from, to, outByDate, inByDate);
       else this.renderWeekend(from, to, outByDate, inByDate);
     } catch (e) {
+      if (!isCurrent()) return;
       errorState(this.out, (e as Error).message);
     }
   }
