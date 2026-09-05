@@ -21,6 +21,17 @@ const api = new SncfApiClient();
 const trips = new TgvmaxRepository(api);
 const stations = new StationRepository();
 
+/**
+ * Service worker : le site reste consultable sans réseau, et s'installe comme
+ * une application. En développement il n'a rien à faire là : son cache
+ * masquerait les modifications qu'on vient d'écrire.
+ */
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+  });
+}
+
 new App(
   root,
   [
