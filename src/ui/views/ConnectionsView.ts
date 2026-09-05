@@ -2,10 +2,12 @@ import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { bookingUrl } from "@/domain/booking";
 import { planJourneys, transferWaits, type Journey } from "@/domain/connections";
+import { withinHours } from "@/domain/hours";
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { addDays, frDateLong, iso, parseISO, today } from "@/lib/dates";
 import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
+import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { rememberedSelect } from "../components/options";
 import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, hint, skeleton } from "../components/states";
@@ -35,6 +37,8 @@ export class ConnectionsView implements View {
   private loaded = false;
   /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
   private readonly latest = new Latest();
+  /** Les itinéraires calculés, gardés pour refiltrer sans tout recalculer. */
+  private journeys: Journey[] = [];
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -79,6 +83,7 @@ export class ConnectionsView implements View {
     const controls = el("div", { class: "controls" }, [
       ...this.pair.nodes,
       field("Date", this.dateInput),
+      ...hourFields(),
       field("Correspondance", this.transferSelect),
       field("Jusqu'à", this.legsSelect),
       button("Chercher", "btn-primary", () => void this.run()),
@@ -91,6 +96,9 @@ export class ConnectionsView implements View {
       this.summary,
       this.out,
     ]);
+    // Plage horaire commune : une modification faite ailleurs doit se voir ici
+    // sans relancer la recherche, puisque les itinéraires sont déjà calculés.
+    hourFilter.subscribe(() => this.rerender());
   }
 
   activate(): void {
@@ -135,19 +143,31 @@ export class ConnectionsView implements View {
     try {
       const trains = await this.repo.allTrainsOn(date);
       if (!isCurrent()) return; // une recherche plus récente est passée devant
-      const journeys = planJourneys(trains, from, to, {
+      this.journeys = planJourneys(trains, from, to, {
         maxLegs: Number(this.legsSelect.value),
         minTransferMinutes: Number(this.transferSelect.value),
       });
       this.loaded = true;
-      this.render(from, to, date, journeys);
+      this.render(from, to, date, this.journeys);
     } catch (e) {
       if (!isCurrent()) return;
       errorState(this.out, (e as Error).message);
     }
   }
 
-  private render(from: string, to: string, date: string, journeys: Journey[]): void {
+  /** Redessine sans rechercher : la plage horaire a changé, pas le trajet. */
+  private rerender(): void {
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
+    if (!from || !to || !this.journeys.length) return;
+    this.render(from, to, this.dateInput.value, this.journeys);
+  }
+
+  private render(from: string, to: string, date: string, all: Journey[]): void {
+    const journeys = all.filter((j) =>
+      withinHours(j.departure, j.arrival, j.arrivesNextDay, hourFilter.value),
+    );
+    const hidden = all.length - journeys.length;
     const directs = journeys.filter((j) => j.transfers === 0).length;
     clear(this.summary).appendChild(
       el("div", {
@@ -159,17 +179,22 @@ export class ConnectionsView implements View {
               (directs
                 ? ` dont ${directs} direct${directs > 1 ? "s" : ""}`
                 : " (aucun direct avec place MAX)")
-            : `<span class="ko">aucun itinéraire</span> avec place MAX, même avec correspondances`),
+            : `<span class="ko">aucun itinéraire</span> avec place MAX, même avec correspondances`) +
+          hoursNote(hidden),
       }),
     );
     clear(this.out);
     if (!journeys.length) {
       empty(
         this.out,
-        "Rien ce jour-là, même en changeant de train.",
-        Number(this.legsSelect.value) < 4
-          ? "Vous pouvez autoriser une correspondance de plus, ou viser un autre jour."
-          : DATASET_WINDOW,
+        hidden
+          ? "Rien dans cette plage horaire, même en changeant de train."
+          : "Rien ce jour-là, même en changeant de train.",
+        hidden
+          ? "Élargissez la plage horaire, ou visez un autre jour."
+          : Number(this.legsSelect.value) < 4
+            ? "Vous pouvez autoriser une correspondance de plus, ou viser un autre jour."
+            : DATASET_WINDOW,
         {
           label: "Essayer le lendemain",
           onClick: () => {

@@ -3,12 +3,14 @@ import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import { bookingUrl } from "@/domain/booking";
 import { heatLevel } from "@/domain/availability";
+import { trainWithinHours } from "@/domain/hours";
 import type { DailyCounts, DaySeats, SeatsByDate, Train } from "@/domain/models";
 import { fastestTrain, sortTrains, type TrainSort } from "@/domain/sorting";
 import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
+import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, loading, skeleton } from "../components/states";
 import { alertBox } from "../components/tension";
@@ -43,9 +45,11 @@ export class CalendarView implements View {
   /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
   private readonly latest = new Latest();
   private readonly daySortSelect: HTMLSelectElement;
-  /** Les trains du jour ouvert, gardés pour pouvoir les réordonner sans requête. */
+  /** Les trains du jour ouvert, gardés pour refiltrer et réordonner sans requête. */
   private dayTrains: Train[] = [];
+  private dayDate = "";
   private readonly dayList = el("div", { class: "train-list" });
+  private readonly daySub = el("span", { class: "detail-sub" });
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -70,8 +74,12 @@ export class CalendarView implements View {
 
     const controls = el("div", { class: "controls" }, [
       ...this.pair.nodes,
+      ...hourFields(),
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
+    // La plage horaire est commune à tous les écrans : quand elle change
+    // ailleurs, la journée ouverte ici doit suivre.
+    hourFilter.subscribe(() => this.renderDayList());
     this.element = el("section", { class: "panel" }, [
       controls,
       this.summary,
@@ -239,13 +247,13 @@ export class CalendarView implements View {
     try {
       const raw = await this.repo.trains(from, to, date);
       const day = this.seats[date] ?? null;
-      const list = FreePlacesRepository.attach(raw, day);
-      this.dayTrains = list;
+      this.dayTrains = FreePlacesRepository.attach(raw, day);
+      this.dayDate = date;
       clear(this.detail);
       this.detail.appendChild(
         el("div", { class: "detail-head" }, [
           el("h3", { text: frDateLong(date) }),
-          el("span", { class: "detail-sub", text: `${list.length} trajet(s) avec place MAX` }),
+          this.daySub,
           this.daySortSelect,
           reserveButton("Réserver sur SNCF Connect ↗", bookingUrl(from, to, date)),
         ]),
@@ -269,17 +277,22 @@ export class CalendarView implements View {
   }
 
   /**
-   * (Re)dessine la liste du jour ouvert dans l'ordre demandé.
+   * (Re)dessine la liste du jour ouvert : plage horaire, puis ordre demandé.
    *
-   * Le tri ne relance aucune requête : les trains du jour sont déjà là, seule
-   * leur mise en ordre change. Le plus rapide reste désigné dans les deux
-   * ordres, sinon il faudrait comparer les durées une à une pour le retrouver.
+   * Ni le filtre ni le tri ne relancent de requête, les trains du jour sont
+   * déjà là. Ce qui est écarté par la plage est compté et dit, sinon une liste
+   * vidée par un réglage se lirait comme une absence de place. Le trajet le
+   * plus court est désigné parmi ceux qui restent, dans les deux ordres.
    */
   private renderDayList(): void {
-    const fastest = this.dayTrains.length > 1 ? fastestTrain(this.dayTrains) : null;
+    if (!this.dayDate) return;
+    const kept = this.dayTrains.filter((t) => trainWithinHours(t, hourFilter.value));
+    this.daySub.textContent =
+      `${kept.length} trajet(s) avec place MAX` + hoursNote(this.dayTrains.length - kept.length);
+    const fastest = kept.length > 1 ? fastestTrain(kept) : null;
     const order = this.daySortSelect.value as TrainSort;
     clear(this.dayList).append(
-      ...sortTrains(this.dayTrains, order).map((t) => trainRow(t, false, t === fastest)),
+      ...sortTrains(kept, order).map((t) => trainRow(t, false, t === fastest)),
     );
   }
 
