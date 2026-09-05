@@ -153,7 +153,12 @@ export class DestinationsView implements View {
       clear(this.out);
       return;
     }
-    loading(this.out, this.mode() === "to" ? "Recherche des départs vers cette ville…" : "Recherche des destinations…");
+    loading(
+      this.out,
+      this.mode() === "to"
+        ? "Recherche des départs vers cette ville…"
+        : "Recherche des destinations…",
+    );
     clear(this.summary);
     try {
       const grouped =

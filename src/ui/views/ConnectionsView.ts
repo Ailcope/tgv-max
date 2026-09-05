@@ -5,7 +5,7 @@ import { durationMinutes, formatDuration } from "@/domain/time";
 import { frDateLong, iso, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { rememberedSelect } from "../components/options";
-import { StationPicker } from "../components/StationPicker";
+import { StationPair } from "../components/StationPair";
 import { empty, errorState, hint, loading } from "../components/states";
 import { axisBadge, nextDayChip, reserveButton } from "../components/trains";
 import { button, clear, el, field } from "../dom";
@@ -23,8 +23,7 @@ export class ConnectionsView implements View {
   readonly hint = "quand le direct est complet";
   readonly element: HTMLElement;
 
-  private readonly fromPicker: StationPicker;
-  private readonly toPicker: StationPicker;
+  private readonly pair: StationPair;
   private readonly dateInput: HTMLInputElement;
   private readonly transferSelect: HTMLSelectElement;
   private readonly legsSelect: HTMLSelectElement;
@@ -36,29 +35,44 @@ export class ConnectionsView implements View {
     private readonly repo: TgvmaxRepository,
     stations: StationRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, { placeholder: "ex. Paris", value: "PARIS (intramuros)", onSelect: () => void this.run() });
-    this.toPicker = new StationPicker(stations, { placeholder: "ex. Marseille", value: "MARSEILLE ST CHARLES", onSelect: () => void this.run() });
-    const swap = button("⇄", "swap", () => this.swap());
-    swap.title = "Inverser";
-    this.dateInput = el("input", { class: "date-input", type: "date", min: iso(today()), value: iso(today()) });
+    this.pair = new StationPair(stations, {
+      fromPlaceholder: "ex. Paris",
+      toPlaceholder: "ex. Marseille",
+      fromValue: "PARIS (intramuros)",
+      toValue: "MARSEILLE ST CHARLES",
+      onChange: () => void this.run(),
+    });
+    this.dateInput = el("input", {
+      class: "date-input",
+      type: "date",
+      min: iso(today()),
+      value: iso(today()),
+    });
     this.dateInput.addEventListener("change", () => void this.run());
     this.transferSelect = rememberedSelect(
       "corresp.attente",
-      [["15", "corresp. ≥ 15 min"], ["20", "corresp. ≥ 20 min"], ["30", "corresp. ≥ 30 min"], ["45", "corresp. ≥ 45 min"]],
+      [
+        ["15", "corresp. ≥ 15 min"],
+        ["20", "corresp. ≥ 20 min"],
+        ["30", "corresp. ≥ 30 min"],
+        ["45", "corresp. ≥ 45 min"],
+      ],
       "20",
       () => void this.run(),
     );
     this.legsSelect = rememberedSelect(
       "corresp.jambes",
-      [["2", "1 correspondance"], ["3", "2 correspondances"], ["4", "3 correspondances"]],
+      [
+        ["2", "1 correspondance"],
+        ["3", "2 correspondances"],
+        ["4", "3 correspondances"],
+      ],
       "3",
       () => void this.run(),
     );
 
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
-      swap,
-      field("Arrivée", this.toPicker.element),
+      ...this.pair.nodes,
       field("Date", this.dateInput),
       field("Correspondance", this.transferSelect),
       field("Jusqu'à", this.legsSelect),
@@ -66,7 +80,9 @@ export class ConnectionsView implements View {
     ]);
     this.element = el("section", { class: "panel" }, [
       controls,
-      hint("Astuce : quand un trajet direct n'a plus de place MAX, il en reste souvent en coupant en deux (souvent via Paris ou Lyon)."),
+      hint(
+        "Astuce : quand un trajet direct n'a plus de place MAX, il en reste souvent en coupant en deux (souvent via Paris ou Lyon).",
+      ),
       this.summary,
       this.out,
     ]);
@@ -78,24 +94,13 @@ export class ConnectionsView implements View {
 
   /** Pre-fill from the command palette. */
   preset(origin: string, destination?: string): void {
-    this.fromPicker.set(origin);
-    if (destination) this.toPicker.set(destination);
-    void this.run();
-  }
-
-  private swap(): void {
-    const a = this.fromPicker.value;
-    const b = this.toPicker.value;
-    this.fromPicker.clear();
-    this.toPicker.clear();
-    if (b) this.fromPicker.set(b);
-    if (a) this.toPicker.set(a);
+    this.pair.set(origin, destination);
     void this.run();
   }
 
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    const to = this.toPicker.value;
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
     const date = this.dateInput.value;
     if (!from || !to || from === to || !date) {
       empty(this.summary, "Choisissez deux gares différentes et une date.");
@@ -126,13 +131,18 @@ export class ConnectionsView implements View {
           `<b>${prettyStation(from)}</b> → <b>${prettyStation(to)}</b> · ${frDateLong(date)} · ` +
           (journeys.length
             ? `<span class="ok">${journeys.length} itinéraire${journeys.length > 1 ? "s" : ""}</span>` +
-              (directs ? ` dont ${directs} direct${directs > 1 ? "s" : ""}` : " (aucun direct avec place MAX)")
+              (directs
+                ? ` dont ${directs} direct${directs > 1 ? "s" : ""}`
+                : " (aucun direct avec place MAX)")
             : `<span class="ko">aucun itinéraire</span> avec place MAX, même avec correspondances`),
       }),
     );
     clear(this.out);
     if (!journeys.length) {
-      empty(this.out, "Rien ce jour-là. Essayez une autre date, ou augmentez le nombre de correspondances.");
+      empty(
+        this.out,
+        "Rien ce jour-là. Essayez une autre date, ou augmentez le nombre de correspondances.",
+      );
       return;
     }
     for (const j of journeys) this.out.appendChild(this.card(j));
@@ -140,7 +150,9 @@ export class ConnectionsView implements View {
 
   private card(j: Journey): HTMLElement {
     const header = el("div", { class: "rt-date" }, [
-      el("b", { html: `${j.departure} <span class="arrow">→</span> ${j.arrival}${j.arrivesNextDay ? ' <span class="t-j1">J+1</span>' : ""}` }),
+      el("b", {
+        html: `${j.departure} <span class="arrow">→</span> ${j.arrival}${j.arrivesNextDay ? ' <span class="t-j1">J+1</span>' : ""}`,
+      }),
       el("span", { class: "jy-total", text: formatDuration(j.totalMinutes) }),
       el("span", {
         class: "jy-transfers" + (j.transfers ? "" : " jy-direct"),
@@ -152,14 +164,23 @@ export class ConnectionsView implements View {
     j.legs.forEach((t, i) => {
       if (i > 0) {
         legsBox.appendChild(
-          el("div", { class: "jy-wait", text: `⏱ ${formatDuration(waits[i - 1])} de correspondance à ${prettyStation(t.origin)}` }),
+          el("div", {
+            class: "jy-wait",
+            text: `⏱ ${formatDuration(waits[i - 1])} de correspondance à ${prettyStation(t.origin)}`,
+          }),
         );
       }
       legsBox.appendChild(
         el("div", { class: "rt-leg" }, [
-          el("span", { class: "rt-od", text: `${prettyStation(t.origin)} → ${prettyStation(t.destination)}` }),
+          el("span", {
+            class: "rt-od",
+            text: `${prettyStation(t.origin)} → ${prettyStation(t.destination)}`,
+          }),
           el("span", { class: "rt-time", html: `<b>${t.departure}</b> → <b>${t.arrival}</b>` }),
-          el("span", { class: "t-dur", text: formatDuration(durationMinutes(t.departure, t.arrival)) }),
+          el("span", {
+            class: "t-dur",
+            text: formatDuration(durationMinutes(t.departure, t.arrival)),
+          }),
           axisBadge(t.axis),
           nextDayChip(t),
           el("span", { class: "t-no", text: `n°${t.trainNo}` }),

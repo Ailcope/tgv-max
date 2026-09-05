@@ -4,10 +4,10 @@ import { heatLevel } from "@/domain/availability";
 import type { DailyCounts } from "@/domain/models";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
-import { StationPicker } from "../components/StationPicker";
+import { StationPair } from "../components/StationPair";
 import { empty, errorState, loading } from "../components/states";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, field } from "../dom";
+import { button, clear, el } from "../dom";
 import type { View } from "./View";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -27,8 +27,7 @@ export class CalendarView implements View {
   readonly hint = "30 jours pour un trajet";
   readonly element: HTMLElement;
 
-  private readonly fromPicker: StationPicker;
-  private readonly toPicker: StationPicker;
+  private readonly pair: StationPair;
   private readonly summary = el("div", { class: "summary" });
   private readonly grid = el("div", { class: "cal" });
   private readonly detail = el("div", { class: "detail" });
@@ -37,23 +36,16 @@ export class CalendarView implements View {
     private readonly repo: TgvmaxRepository,
     stations: StationRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, {
-      placeholder: "ex. Paris",
-      value: "PARIS (intramuros)",
-      onSelect: () => void this.run(),
+    this.pair = new StationPair(stations, {
+      fromPlaceholder: "ex. Paris",
+      toPlaceholder: "ex. Lyon",
+      fromValue: "PARIS (intramuros)",
+      toValue: "LYON (intramuros)",
+      onChange: () => void this.run(),
     });
-    this.toPicker = new StationPicker(stations, {
-      placeholder: "ex. Lyon",
-      value: "LYON (intramuros)",
-      onSelect: () => void this.run(),
-    });
-    const swap = button("⇄", "swap", () => this.swap());
-    swap.title = "Inverser";
 
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
-      swap,
-      field("Arrivée", this.toPicker.element),
+      ...this.pair.nodes,
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
     this.element = el("section", { class: "panel" }, [
@@ -71,24 +63,13 @@ export class CalendarView implements View {
 
   /** Pre-fill from the command palette. */
   preset(origin: string, destination?: string): void {
-    this.fromPicker.set(origin);
-    if (destination) this.toPicker.set(destination);
-    void this.run();
-  }
-
-  private swap(): void {
-    const a = this.fromPicker.value;
-    const b = this.toPicker.value;
-    this.fromPicker.clear();
-    this.toPicker.clear();
-    if (b) this.fromPicker.set(b);
-    if (a) this.toPicker.set(a);
+    this.pair.set(origin, destination);
     void this.run();
   }
 
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    const to = this.toPicker.value;
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
     clear(this.detail);
     if (!from || !to) {
       empty(this.summary, "Choisissez une gare de départ et d'arrivée.");

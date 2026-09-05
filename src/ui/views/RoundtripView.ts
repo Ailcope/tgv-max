@@ -7,7 +7,7 @@ import { durationMinutes, formatDuration, hhmmToMinutes } from "@/domain/time";
 import { DOWS, frDate, frDateLong, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { rememberedSelect } from "../components/options";
-import { StationPicker } from "../components/StationPicker";
+import { StationPair } from "../components/StationPair";
 import { empty, errorState, loading } from "../components/states";
 import { axisBadge, reserveButton } from "../components/trains";
 import { button, clear, el, field } from "../dom";
@@ -22,8 +22,7 @@ export class RoundtripView implements View {
   readonly hint = "journée & week-end";
   readonly element: HTMLElement;
 
-  private readonly fromPicker: StationPicker;
-  private readonly toPicker: StationPicker;
+  private readonly pair: StationPair;
   private readonly modeSelect: HTMLSelectElement;
   private readonly staySelect: HTMLSelectElement;
   private readonly earlySelect: HTMLSelectElement;
@@ -38,18 +37,13 @@ export class RoundtripView implements View {
     private readonly repo: TgvmaxRepository,
     private readonly stations: StationRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, {
-      placeholder: "ex. Paris",
-      value: "PARIS (intramuros)",
-      onSelect: () => void this.run(),
+    this.pair = new StationPair(stations, {
+      fromPlaceholder: "ex. Paris",
+      toPlaceholder: "ex. Bordeaux",
+      fromValue: "PARIS (intramuros)",
+      toValue: "BORDEAUX ST JEAN",
+      onChange: () => void this.run(),
     });
-    this.toPicker = new StationPicker(stations, {
-      placeholder: "ex. Bordeaux",
-      value: "BORDEAUX ST JEAN",
-      onSelect: () => void this.run(),
-    });
-    const swap = button("⇄", "swap", () => this.swap());
-    swap.title = "Inverser";
 
     this.modeSelect = rememberedSelect(
       "allerRetour.formule",
@@ -102,9 +96,7 @@ export class RoundtripView implements View {
     );
 
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
-      swap,
-      field("Arrivée", this.toPicker.element),
+      ...this.pair.nodes,
       field("Formule", this.modeSelect),
       field("Sur place", this.staySelect),
       field("Aller pas avant", this.earlySelect),
@@ -134,19 +126,9 @@ export class RoundtripView implements View {
     if (field_) field_.style.display = this.modeSelect.value === "day" ? "" : "none";
   }
 
-  private swap(): void {
-    const a = this.fromPicker.value;
-    const b = this.toPicker.value;
-    this.fromPicker.clear();
-    this.toPicker.clear();
-    if (b) this.fromPicker.set(b);
-    if (a) this.toPicker.set(a);
-    void this.run();
-  }
-
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    const to = this.toPicker.value;
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
     if (!from || !to || from === to) {
       empty(this.summary, "Choisissez deux gares différentes.");
       clear(this.out);
