@@ -6,7 +6,7 @@
     <title>TGV MAX Planner : trouvez vos places MAX disponibles</title>
     <meta
       name="description"
-      content="Trouvez les places TGV Max disponibles : calendrier des disponibilités sur 30 jours, destinations du jour, carte du réseau ferré et allers-retours. Gratuit, basé sur les données ouvertes SNCF."
+      content="Trouvez les places TGV Max disponibles : calendrier sur 30 jours, destinations du jour, carte de chaleur gares × jours, correspondances, carte du réseau ferré et allers-retours. Gratuit, basé sur les données ouvertes SNCF."
     />
     <link rel="canonical" href="https://tgv-max.snownamida.top/" />
 
@@ -16,7 +16,7 @@
     <meta property="og:title" content="TGV MAX Planner : trouvez vos places MAX disponibles" />
     <meta
       property="og:description"
-      content="Calendrier 30 jours des places TGV Max, destinations du jour, carte du réseau ferré, allers-retours journée & week-end. Gratuit et open source."
+      content="Calendrier 30 jours des places TGV Max, destinations du jour, carte de chaleur, correspondances, carte du réseau ferré, allers-retours journée et week-end. Gratuit et open source."
     />
     <meta property="og:url" content="https://tgv-max.snownamida.top/" />
     <meta property="og:locale" content="fr_FR" />
@@ -45,7 +45,7 @@
             "applicationCategory": "TravelApplication",
             "operatingSystem": "Web",
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-            "description": "Planificateur de voyages TGV Max : calendrier des places MAX disponibles sur 30 jours, destinations du jour, carte du réseau ferré et allers-retours."
+            "description": "Planificateur de voyages TGV Max : calendrier des places MAX disponibles sur 30 jours, destinations du jour, carte de chaleur gares × jours, correspondances, carte du réseau ferré et allers-retours."
           },
           {
             "@type": "FAQPage",
@@ -71,7 +71,7 @@
                 "name": "Pourquoi je ne trouve aucune place MAX sur mon trajet ?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Les quotas sont faibles et partent très vite, surtout les vendredis, dimanches et pendant les vacances. Réservez dès l'ouverture des ventes (environ 30 jours avant), visez les heures creuses et le milieu de semaine, et utilisez le calendrier du site pour repérer d'un coup d'œil les jours où il reste des places."
+                  "text": "Les quotas sont faibles et partent très vite, surtout les vendredis, dimanches et pendant les vacances. Réservez dès l'ouverture des ventes (environ 30 jours avant), visez les heures creuses et le milieu de semaine, et utilisez le calendrier du site pour repérer d'un coup d'œil les jours où il reste des places. Si le trajet direct ne donne rien, la carte de chaleur montre les gares encore desservies, et les correspondances reconstituent un itinéraire en plusieurs trains."
                 }
               },
               {
@@ -80,6 +80,14 @@
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "La réservation se fait sur SNCF Connect (ou l'application), avec votre abonnement TGV Max. Ce site est un moteur de recherche : il ne réserve rien lui-même."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Le site fonctionne-t-il sans réseau ?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Oui, en partie. Le site s'installe comme une application depuis le menu du navigateur, et reste consultable hors réseau : l'interface se rouvre, et les recherches déjà faites restent lisibles. Les nouvelles recherches, elles, ont besoin de la connexion pour interroger les données SNCF."
                 }
               },
               {
@@ -119,10 +127,16 @@
       <ul>
         <li>📅 <strong>Calendrier</strong> : les places MAX d'un trajet sur 30 jours, en un coup d'œil ;</li>
         <li>🧭 <strong>Où aller ?</strong> : les destinations disponibles depuis une gare, ou les départs menant à une gare choisie, triables par popularité ;</li>
+        <li>🔥 <strong>Carte de chaleur</strong> : toutes les gares croisées avec tous les jours à venir, quand ni la destination ni la date ne sont fixées ;</li>
         <li>🔀 <strong>Correspondances</strong> : quand le direct est complet, des itinéraires en 2 à 4 trains (trains de nuit compris) ;</li>
         <li>🗺️ <strong>Carte</strong> : les destinations posées sur le vrai réseau ferré, LGV mises en évidence ;</li>
         <li>🔁 <strong>Aller-retour</strong> : journées et week-ends jouables avec des places dans les deux sens.</li>
       </ul>
+      <p>
+        Les recherches se filtrent par plage horaire, se trient par durée, et les trajets suivis
+        se gardent d'une visite à l'autre. Le site s'installe comme une application et reste
+        consultable hors réseau, en thème clair ou sombre.
+      </p>
 
       <h2 id="faq">Questions fréquentes</h2>
       <details>
@@ -149,7 +163,9 @@
           Les quotas sont faibles et partent très vite, surtout les vendredis, dimanches et pendant
           les vacances. Réservez dès l'ouverture des ventes (environ 30 jours avant), visez les
           heures creuses et le milieu de semaine, et utilisez le calendrier du site pour repérer
-          d'un coup d'œil les jours où il reste des places.
+          d'un coup d'œil les jours où il reste des places. Si le trajet direct ne donne rien, la
+          carte de chaleur montre les gares encore desservies, et les correspondances reconstituent
+          un itinéraire en plusieurs trains.
         </p>
       </details>
       <details>
@@ -157,6 +173,15 @@
         <p>
           La réservation se fait sur SNCF Connect (ou l'application), avec votre abonnement TGV
           Max. Ce site est un moteur de recherche : il ne réserve rien lui-même.
+        </p>
+      </details>
+      <details>
+        <summary>Le site fonctionne-t-il sans réseau ?</summary>
+        <p>
+          Oui, en partie. Le site s'installe comme une application depuis le menu du navigateur, et
+          reste consultable hors réseau : l'interface se rouvre, et les recherches déjà faites
+          restent lisibles. Les nouvelles recherches, elles, ont besoin de la connexion pour
+          interroger les données SNCF.
         </p>
       </details>
       <details>

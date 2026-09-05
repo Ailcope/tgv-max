@@ -65,7 +65,10 @@ export function trainRow(t: Train, showOD = false, fastest = false): HTMLElement
 }
 
 /** Lien de réservation vers SNCF Connect, pré-rempli quand on connaît le trajet. */
-export const reserveButton = (label = "Réserver ↗", href: string = SNCF_CONNECT_SEARCH): HTMLElement =>
+export const reserveButton = (
+  label = "Réserver ↗",
+  href: string = SNCF_CONNECT_SEARCH,
+): HTMLElement =>
   el("a", {
     class: "btn-reserve",
     href,

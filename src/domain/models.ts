@@ -95,7 +95,7 @@ export interface DaySeats {
   trains: number;
   /** Seats on the tightest train of the day (`0` when there is none). */
   minSeats: number;
-  /** Share of the day's trains open to MAX, `0`–`1`. */
+  /** Share of the day's trains open to MAX, from `0` to `1`. */
   ratio: number;
   /** Seats left, per train number. */
   byTrain: Record<string, number>;
