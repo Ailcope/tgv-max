@@ -246,7 +246,8 @@ export class DestinationsView implements View {
         fastestMinutes: r.fastestMinutes,
         list: r.list,
       }));
-      const full = maxLegs > 1 ? await this.withConnections(station, date, direct, maxLegs) : direct;
+      const full =
+        maxLegs > 1 ? await this.withConnections(station, date, direct, maxLegs) : direct;
       // Deuxième vérification : la recherche des correspondances est le plus
       // long des deux chargements, c'est là qu'une recherche plus récente a le
       // plus de chances d'être passée devant.
@@ -427,7 +428,9 @@ export class DestinationsView implements View {
       }
       const picked = this.picker.value ?? "";
       const [origin, destination] = to ? [r.name, picked] : [picked, r.name];
-      body.appendChild(reserveButton("Réserver ce trajet ↗", bookingUrl(origin, destination, date)));
+      body.appendChild(
+        reserveButton("Réserver ce trajet ↗", bookingUrl(origin, destination, date)),
+      );
     };
     card.querySelector(".dc-head")?.addEventListener("click", () => {
       card.classList.toggle("open");

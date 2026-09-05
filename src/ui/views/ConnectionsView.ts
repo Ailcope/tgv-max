@@ -255,7 +255,10 @@ export class ConnectionsView implements View {
           class: "jy-book-note",
           text: "Chaque train se réserve séparément : un billet MAX par jambe.",
         })
-      : reserveButton("Réserver ↗", bookingUrl(j.legs[0].origin, j.legs[0].destination, this.dateInput.value));
+      : reserveButton(
+          "Réserver ↗",
+          bookingUrl(j.legs[0].origin, j.legs[0].destination, this.dateInput.value),
+        );
     return el("div", { class: "rt-card" }, [header, legsBox, footer]);
   }
 }
