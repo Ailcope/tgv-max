@@ -2,7 +2,7 @@ import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import { heatLevel } from "@/domain/availability";
-import type { DailyCounts, DaySeats, SeatsByDate } from "@/domain/models";
+import type { DailyCounts, DaySeats, SeatsByDate, Train } from "@/domain/models";
 import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
@@ -10,7 +10,7 @@ import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
 import { alertBox } from "../components/tension";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, field } from "../dom";
+import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -37,6 +37,13 @@ export class CalendarView implements View {
   private readonly detail = el("div", { class: "detail" });
   /** Places restantes du dernier affichage, vide quand le relais est absent. */
   private seats: SeatsByDate = {};
+  private readonly minSeatsSelect: HTMLSelectElement;
+  private readonly minSeatsField: HTMLElement;
+  /** Les trains du jour ouvert, gardés pour refiltrer sans nouvelle requête. */
+  private dayTrains: Train[] = [];
+  private dayDate = "";
+  private readonly dayList = el("div", { class: "train-list" });
+  private readonly daySub = el("span", { class: "detail-sub" });
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -55,11 +62,24 @@ export class CalendarView implements View {
     });
     const swap = button("⇄", "swap", () => this.swap());
     swap.title = "Inverser";
+    this.minSeatsSelect = select(
+      [
+        ["1", "au moins 1 place"],
+        ["2", "au moins 2 places"],
+        ["4", "au moins 4 places"],
+      ],
+      () => this.renderDayList(),
+    );
+    // Le champ n'a de sens que si le nombre de places est connu : sans relais,
+    // il proposerait un filtre qui ne filtre rien.
+    this.minSeatsField = field("Voyageurs", this.minSeatsSelect);
+    if (!this.freePlaces?.enabled) this.minSeatsField.style.display = "none";
 
     const controls = el("div", { class: "controls" }, [
       field("Départ", this.fromPicker.element),
       swap,
       field("Arrivée", this.toPicker.element),
+      this.minSeatsField,
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
     this.element = el("section", { class: "panel" }, [
@@ -220,12 +240,13 @@ export class CalendarView implements View {
     try {
       const raw = await this.repo.trains(from, to, date);
       const day = this.seats[date] ?? null;
-      const list = FreePlacesRepository.attach(raw, day);
+      this.dayTrains = FreePlacesRepository.attach(raw, day);
+      this.dayDate = date;
       clear(this.detail);
       this.detail.appendChild(
         el("div", { class: "detail-head" }, [
           el("h3", { text: frDateLong(date) }),
-          el("span", { class: "detail-sub", text: `${list.length} trajet(s) avec place MAX` }),
+          this.daySub,
           reserveButton("Réserver sur SNCF Connect ↗"),
         ]),
       );
@@ -239,16 +260,31 @@ export class CalendarView implements View {
           ),
         );
       }
-      const box = el(
-        "div",
-        { class: "train-list" },
-        list.map((t) => trainRow(t)),
-      );
-      this.detail.appendChild(box);
+      this.detail.appendChild(this.dayList);
+      this.renderDayList();
       this.detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       errorState(this.detail, (e as Error).message);
     }
+  }
+
+  /**
+   * (Re)dessine la liste du jour ouvert selon le nombre de places demandé.
+   *
+   * Un train dont le nombre de places est inconnu reste affiché : le MAX
+   * Planner et le jeu de données ouvert ne recensent pas exactement les mêmes
+   * circulations, et « inconnu » ne veut pas dire « complet ». Le filtre écarte
+   * ce qu'on sait insuffisant, jamais ce qu'on ignore.
+   */
+  private renderDayList(): void {
+    if (!this.dayDate) return;
+    const min = Number(this.minSeatsSelect.value);
+    const kept = this.dayTrains.filter((t) => t.seats === undefined || t.seats >= min);
+    const short = this.dayTrains.length - kept.length;
+    this.daySub.textContent =
+      `${kept.length} trajet(s) avec place MAX` +
+      (short ? ` · ${short} sous ${min} place${min > 1 ? "s" : ""}` : "");
+    clear(this.dayList).append(...kept.map((t) => trainRow(t)));
   }
 
   private legend(): HTMLElement {

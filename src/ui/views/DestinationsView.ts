@@ -1,3 +1,4 @@
+import { FreePlacesRepository } from "@/data/FreePlacesRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { DestinationAvailability, OriginAvailability, Train } from "@/domain/models";
@@ -48,6 +49,7 @@ export class DestinationsView implements View {
   constructor(
     private readonly repo: TgvmaxRepository,
     private readonly stations: StationRepository,
+    private readonly freePlaces?: FreePlacesRepository,
   ) {
     this.picker = new StationPicker(stations, {
       placeholder: "ex. Paris",
@@ -142,7 +144,12 @@ export class DestinationsView implements View {
       clear(this.out);
       return;
     }
-    loading(this.out, this.mode() === "to" ? "Recherche des départs vers cette ville…" : "Recherche des destinations…");
+    loading(
+      this.out,
+      this.mode() === "to"
+        ? "Recherche des départs vers cette ville…"
+        : "Recherche des destinations…",
+    );
     clear(this.summary);
     try {
       const grouped =
@@ -225,22 +232,48 @@ export class DestinationsView implements View {
       ]),
       body,
     ]);
+    const fill = (list: Train[]): void => {
+      clear(body);
+      [...list]
+        .sort((a, b) => a.departure.localeCompare(b.departure))
+        .forEach((t) => body.appendChild(trainRow(t)));
+      body.appendChild(reserveButton("Réserver ce trajet ↗"));
+    };
     card.querySelector(".dc-head")?.addEventListener("click", () => {
       card.classList.toggle("open");
       if (body.classList.contains("hidden")) {
         body.classList.remove("hidden");
         if (!filled) {
           filled = true;
-          [...r.list]
-            .sort((a, b) => a.departure.localeCompare(b.departure))
-            .forEach((t) => body.appendChild(trainRow(t)));
-          body.appendChild(reserveButton("Réserver ce trajet ↗"));
+          fill(r.list);
+          // Le nombre de places restantes ne s'interroge qu'à l'ouverture de la
+          // carte : une journée compte des dizaines de destinations, les
+          // demander toutes reviendrait à marteler le service pour des trajets
+          // que personne ne regarde.
+          void this.withSeats(r.name, r.list).then((list) => {
+            if (list && !body.classList.contains("hidden")) fill(list);
+          });
         }
       } else {
         body.classList.add("hidden");
       }
     });
     return card;
+  }
+
+  /**
+   * La même liste de trains, avec le nombre de places restantes quand le relais
+   * est configuré et qu'il répond. `null` veut dire « rien à ajouter » : la
+   * liste déjà affichée reste telle quelle.
+   */
+  private async withSeats(name: string, list: Train[]): Promise<Train[] | null> {
+    if (!this.freePlaces?.enabled) return null;
+    const picked = this.picker.value ?? "";
+    const [origin, destination] = this.mode() === "to" ? [name, picked] : [picked, name];
+    const pair = await this.repo.codePair(origin, destination).catch(() => null);
+    if (!pair) return null;
+    const day = await this.freePlaces.day(pair[0], pair[1], this.dateInput.value);
+    return day ? FreePlacesRepository.attach(list, day) : null;
   }
 
   private surprise(): void {

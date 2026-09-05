@@ -29,7 +29,7 @@ new App(
   root,
   [
     new CalendarView(trips, stations, freePlaces),
-    new DestinationsView(trips, stations),
+    new DestinationsView(trips, stations, freePlaces),
     new ConnectionsView(trips, stations),
     new MapView(trips, stations),
     new RoundtripView(trips, stations),
