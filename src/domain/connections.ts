@@ -6,7 +6,7 @@ export interface Journey {
   legs: Train[];
   /** First departure, `"HH:MM"`. */
   departure: string;
-  /** Final arrival, `"HH:MM"` (may be past midnight — see {@link Journey.arrivesNextDay}). */
+  /** Final arrival, `"HH:MM"` (may be past midnight, see {@link Journey.arrivesNextDay}). */
   arrival: string;
   /** Door-to-door, in minutes (includes waits at connections). */
   totalMinutes: number;

@@ -12,7 +12,7 @@ import type { View } from "./View";
 
 /**
  * « Correspondances » : journeys with connections when the direct trains are
- * full — the whole day of MAX trains is fetched once, then searched locally
+ * full: the whole day of MAX trains is fetched once, then searched locally
  * (see {@link planJourneys}).
  */
 export class ConnectionsView implements View {

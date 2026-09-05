@@ -12,10 +12,10 @@ const WEIGHT: Record<SpeedLevel, number> = { 3: 2.6, 2: 2, 1: 1.3, 0: 0.7 };
 const OPACITY: Record<SpeedLevel, number> = { 3: 0.95, 2: 0.9, 1: 0.7, 0: 0.5 };
 
 const LEGEND: [SpeedLevel, string][] = [
-  [3, "LGV (≥ 250 km/h)"],
-  [2, "Ligne rapide (200–249)"],
-  [1, "Ligne classique (120–199)"],
-  [0, "Ligne locale (< 120)"],
+  [3, "LGV, 250 km/h et plus"],
+  [2, "Ligne rapide, 200 à 249 km/h"],
+  [1, "Ligne classique, 120 à 199 km/h"],
+  [0, "Ligne locale, moins de 120 km/h"],
 ];
 
 type RailProps = { v: SpeedLevel };

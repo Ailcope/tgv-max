@@ -1,11 +1,11 @@
-/* ============ TGV MAX Planner — feuille de style ============ */
+/* ============ TGV MAX Planner : feuille de style ============ */
 :root {
   /* Thème « bleu nuit ferroviaire ». Variables historiquement nommées --violet*
      conservées pour ne pas casser les références ; les valeurs sont bleu nuit. */
-  --violet: #1c3d63; /* couleur principale — bleu nuit */
+  --violet: #1c3d63; /* couleur principale, bleu nuit */
   --violet-d: #14213d; /* bleu nuit foncé (dégradés, survol) */
   --violet-l: #e2e9f3; /* bleu très clair (sélections, badges) */
-  --pink: #e5007d; /* accent — rose SNCF */
+  --pink: #e5007d; /* accent, rose SNCF */
   --ink: #14202e;
   --muted: #667089;
   --line: #e2e7f0;
