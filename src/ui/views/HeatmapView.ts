@@ -1,7 +1,7 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { heatLevel } from "@/domain/availability";
-import { buildHeatmap, heatDates, heatPeak, type HeatRow } from "@/domain/heatmap";
+import { buildHeatmap, countStations, heatDates, heatPeak, type HeatRow } from "@/domain/heatmap";
 import { DOWS, frDateLong, isWeekend, parseISO } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
@@ -84,7 +84,7 @@ export class HeatmapView implements View {
     this.element = el("section", { class: "panel" }, [
       controls,
       hint(
-        "Chaque ligne est une gare, chaque colonne un jour. Plus la case est foncée, plus il reste de trains MAX. Cliquez une case pour ouvrir le calendrier du trajet.",
+        "Une ligne par gare, une colonne par jour : plus le vert est franc, plus il reste de trains MAX ce jour-là. Le trait bleu marque les samedis et dimanches. Cliquez une case pour ouvrir le calendrier du trajet.",
       ),
       this.summary,
       this.out,
@@ -121,22 +121,27 @@ export class HeatmapView implements View {
       if (this.picker.value !== station) return; // la gare a changé pendant l'attente
       const dates = heatDates(Number(this.windowSelect.value));
       this.loaded = true;
-      this.render(station, dates, buildHeatmap(counts, dates, ROWS));
+      this.render(station, dates, buildHeatmap(counts, dates, ROWS), countStations(counts, dates));
     } catch (e) {
       errorState(this.out, (e as Error).message);
     }
   }
 
-  private render(station: string, dates: string[], rows: HeatRow[]): void {
+  private render(station: string, dates: string[], rows: HeatRow[], served: number): void {
     const to = this.mode() === "to";
     const trains = rows.reduce((sum, r) => sum + r.total, 0);
+    // Le tableau s'arrête à quarante lignes : quand il en existe davantage, on
+    // le dit, sinon « 40 gares » se lit comme le total.
+    const shown =
+      served > rows.length
+        ? `les <span class="ok">${rows.length} gares</span> les mieux desservies parmi ${served}`
+        : `<span class="ok">${rows.length} gare${rows.length > 1 ? "s" : ""}</span>`;
     clear(this.summary).appendChild(
       el("div", {
         class: "sum-line",
         html: rows.length
-          ? `${to ? "Vers" : "Depuis"} <b>${prettyStation(station)}</b> · ` +
-            `<span class="ok">${rows.length} gare${rows.length > 1 ? "s" : ""}</span> ` +
-            `sur ${dates.length} jours · ${trains} trajet${trains > 1 ? "s" : ""} avec place MAX`
+          ? `${to ? "Vers" : "Depuis"} <b>${prettyStation(station)}</b> · ${shown} · ` +
+            `${dates.length} jours · ${trains} trajet${trains > 1 ? "s" : ""} avec place MAX`
           : `${to ? "Vers" : "Depuis"} <b>${prettyStation(station)}</b> · ` +
             `<span class="ko">aucune place MAX</span> sur la fenêtre`,
       }),
@@ -207,10 +212,10 @@ export class HeatmapView implements View {
   private legend(peak: number): HTMLElement {
     const items: [string, string][] = [
       ["0", "lvl0"],
-      ["1–2", "lvl1"],
-      ["3–5", "lvl2"],
-      ["6–9", "lvl3"],
-      ["10+", "lvl4"],
+      ["1 à 2", "lvl1"],
+      ["3 à 5", "lvl2"],
+      ["6 à 9", "lvl3"],
+      ["10 et plus", "lvl4"],
     ];
     const lg = el("div", { class: "legend" }, [
       el("span", { class: "lg-lab", text: "Trajets par jour :" }),
