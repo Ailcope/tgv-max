@@ -2,12 +2,13 @@ import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { DestinationAvailability, OriginAvailability, Train } from "@/domain/models";
 import { formatDuration } from "@/domain/time";
-import { addDays, frDateLong, iso, nextSaturday, today } from "@/lib/dates";
+import { addDays, frDateLong, iso, nextSaturday, parseISO, today } from "@/lib/dates";
 import { formatRidership } from "@/lib/format";
 import { prettyStation } from "@/lib/text";
+import { Latest } from "@/lib/latest";
 import { flag } from "../components/flags";
 import { StationPicker } from "../components/StationPicker";
-import { empty, errorState, loading } from "../components/states";
+import { DATASET_WINDOW, empty, errorState, skeleton } from "../components/states";
 import { reserveButton, trainRow } from "../components/trains";
 import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
@@ -44,6 +45,8 @@ export class DestinationsView implements View {
   private readonly out = el("div", { class: "dest-grid" });
   private results: GroupedStation[] = [];
   private loaded = false;
+  /** Deux recherches peuvent se croiser : seule la dernière écrit à l'écran. */
+  private readonly latest = new Latest();
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -138,17 +141,23 @@ export class DestinationsView implements View {
     const station = this.picker.value;
     const date = this.dateInput.value;
     if (!station || !date) {
+      this.latest.cancel();
       empty(this.summary, "Choisissez une gare et une date.");
       clear(this.out);
       return;
     }
-    loading(this.out, this.mode() === "to" ? "Recherche des départs vers cette ville…" : "Recherche des destinations…");
+    const isCurrent = this.latest.begin();
+    skeleton(this.out, "cards", 8);
     clear(this.summary);
     try {
       const grouped =
         this.mode() === "to"
           ? ((await this.repo.originsOn(station, date)) as OriginAvailability[])
           : ((await this.repo.destinationsOn(station, date)) as DestinationAvailability[]);
+      // Le verdict avant l'affectation : une réponse périmée ne doit pas non
+      // plus rester en mémoire, sinon un simple changement de tri la ferait
+      // ressurgir à l'écran.
+      if (!isCurrent()) return;
       this.results = grouped.map((r) => ({
         name: "origin" in r ? r.origin : r.destination,
         trains: r.trains,
@@ -159,6 +168,7 @@ export class DestinationsView implements View {
       this.loaded = true;
       this.render();
     } catch (e) {
+      if (!isCurrent()) return;
       errorState(this.out, (e as Error).message);
     }
   }
@@ -195,7 +205,14 @@ export class DestinationsView implements View {
 
     clear(this.out);
     if (!res.length) {
-      empty(this.out, "Aucune place MAX ce jour-là. Essayez une autre date.");
+      empty(
+        this.out,
+        "Aucune place MAX ce jour-là.",
+        this.results.length
+          ? "Le filtre de durée écarte tout ce qui a été trouvé : élargissez-le."
+          : DATASET_WINDOW,
+        { label: "Essayer le lendemain", onClick: () => this.setDate(addDays(parseISO(date), 1)) },
+      );
       return;
     }
     for (const r of res) this.out.appendChild(this.card(r));

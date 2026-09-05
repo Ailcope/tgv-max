@@ -1225,3 +1225,69 @@ a {
     margin-left: 0;
   }
 }
+
+/* ============ Attente et absence ============ */
+/* Un rond qui tourne dans une zone vide fait sauter la page quand les
+   résultats arrivent. Ces fantômes occupent la place à la bonne taille, et
+   disent au passage la forme de ce qui arrive. */
+.sk {
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--line) 25%, var(--bg) 37%, var(--line) 63%);
+  background-size: 400% 100%;
+  animation: sk 1.3s ease infinite;
+}
+.sk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sk-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.sk-row {
+  height: 48px;
+}
+.sk-card {
+  height: 62px;
+}
+.sk-cal {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+.sk-cell {
+  aspect-ratio: 1 / 0.82;
+  min-height: 54px;
+  border-radius: 10px;
+}
+.sk-say {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 12px 0 0;
+}
+@keyframes sk {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+/* La raison de l'absence, sous le constat : elle compte autant que lui. */
+.state-why {
+  max-width: 46ch;
+  margin: 4px auto 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.state-empty .chip {
+  margin-top: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk {
+    animation: none;
+  }
+}

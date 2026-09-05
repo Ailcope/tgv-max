@@ -144,7 +144,11 @@ export class MapView implements View {
         } else {
           const rs = await this.repo.destinationsRange(stationName);
           for (const r of rs) {
-            data.push({ station: r.destination, metric: r.days, label: `${r.days} jour(s) · ${r.trains} trajet(s)` });
+            data.push({
+              station: r.destination,
+              metric: r.days,
+              label: `${r.days} jour(s) · ${r.trains} trajet(s)`,
+            });
           }
         }
       } else if (byDate) {
@@ -161,7 +165,11 @@ export class MapView implements View {
       } else {
         const rs = await this.repo.originsRange(stationName);
         for (const r of rs) {
-          data.push({ station: r.origin, metric: r.days, label: `${r.days} jour(s) · ${r.trains} trajet(s)` });
+          data.push({
+            station: r.origin,
+            metric: r.days,
+            label: `${r.days} jour(s) · ${r.trains} trajet(s)`,
+          });
         }
       }
       this.loaded = true;
