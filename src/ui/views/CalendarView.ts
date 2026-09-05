@@ -1,13 +1,14 @@
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import { heatLevel } from "@/domain/availability";
-import type { DailyCounts } from "@/domain/models";
+import type { DailyCounts, Train } from "@/domain/models";
+import { fastestTrain, sortTrains, type TrainSort } from "@/domain/sorting";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, field } from "../dom";
+import { button, clear, el, field, select } from "../dom";
 import type { View } from "./View";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -32,6 +33,10 @@ export class CalendarView implements View {
   private readonly summary = el("div", { class: "summary" });
   private readonly grid = el("div", { class: "cal" });
   private readonly detail = el("div", { class: "detail" });
+  private readonly daySortSelect: HTMLSelectElement;
+  /** Les trains du jour ouvert, gardés pour pouvoir les réordonner sans requête. */
+  private dayTrains: Train[] = [];
+  private readonly dayList = el("div", { class: "train-list" });
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -49,6 +54,14 @@ export class CalendarView implements View {
     });
     const swap = button("⇄", "swap", () => this.swap());
     swap.title = "Inverser";
+    this.daySortSelect = select(
+      [
+        ["departure", "Par heure de départ"],
+        ["duration", "Par durée"],
+      ],
+      () => this.renderDayList(),
+    );
+    this.daySortSelect.classList.add("sel-sm");
 
     const controls = el("div", { class: "controls" }, [
       field("Départ", this.fromPicker.element),
@@ -174,24 +187,37 @@ export class CalendarView implements View {
     loading(this.detail, `Trajets du ${frDate(date)}…`);
     try {
       const list = await this.repo.trains(from, to, date);
+      this.dayTrains = list;
       clear(this.detail);
       this.detail.appendChild(
         el("div", { class: "detail-head" }, [
           el("h3", { text: frDateLong(date) }),
           el("span", { class: "detail-sub", text: `${list.length} trajet(s) avec place MAX` }),
+          this.daySortSelect,
           reserveButton("Réserver sur SNCF Connect ↗"),
         ]),
       );
-      const box = el(
-        "div",
-        { class: "train-list" },
-        list.map((t) => trainRow(t)),
-      );
-      this.detail.appendChild(box);
+      this.detail.appendChild(this.dayList);
+      this.renderDayList();
       this.detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       errorState(this.detail, (e as Error).message);
     }
+  }
+
+  /**
+   * (Re)dessine la liste du jour ouvert dans l'ordre demandé.
+   *
+   * Le tri ne relance aucune requête : les trains du jour sont déjà là, seule
+   * leur mise en ordre change. Le plus rapide reste désigné dans les deux
+   * ordres, sinon il faudrait comparer les durées une à une pour le retrouver.
+   */
+  private renderDayList(): void {
+    const fastest = this.dayTrains.length > 1 ? fastestTrain(this.dayTrains) : null;
+    const order = this.daySortSelect.value as TrainSort;
+    clear(this.dayList).append(
+      ...sortTrains(this.dayTrains, order).map((t) => trainRow(t, false, t === fastest)),
+    );
   }
 
   private legend(): HTMLElement {

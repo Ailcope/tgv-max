@@ -22,11 +22,19 @@ export function axisBadge(axis: string): HTMLElement {
 
 /** `J+1` chip when a train arrives the next calendar day (night trains). */
 export function nextDayChip(t: Train): HTMLElement | null {
-  return t.arrival < t.departure ? el("span", { class: "t-j1", text: "J+1", title: "Arrivée le lendemain" }) : null;
+  return t.arrival < t.departure
+    ? el("span", { class: "t-j1", text: "J+1", title: "Arrivée le lendemain" })
+    : null;
 }
 
-/** One train row: `08:12 → 11:47 · 3h35 · SUD EST · n°6111`. */
-export function trainRow(t: Train, showOD = false): HTMLElement {
+/**
+ * One train row: `08:12 → 11:47 · 3h35 · SUD EST · n°6111`.
+ *
+ * `fastest` distingue le trajet le plus court de la journée. Sur une liste
+ * rangée par heure de départ, il se repère autrement en comparant les durées
+ * une à une.
+ */
+export function trainRow(t: Train, showOD = false, fastest = false): HTMLElement {
   const duration = formatDuration(durationMinutes(t.departure, t.arrival));
   const children: (Node | null)[] = [
     el("span", { class: "t-time" }, [
@@ -34,7 +42,8 @@ export function trainRow(t: Train, showOD = false): HTMLElement {
       el("span", { class: "arrow", text: " → " }),
       el("b", { text: t.arrival }),
     ]),
-    el("span", { class: "t-dur", text: duration }),
+    el("span", { class: `t-dur${fastest ? " t-dur-best" : ""}`, text: duration }),
+    fastest ? el("span", { class: "t-best", text: "le plus rapide" }) : null,
     axisBadge(t.axis),
     nextDayChip(t),
     el("span", { class: "t-no", text: `n°${t.trainNo}` }),
