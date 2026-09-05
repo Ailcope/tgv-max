@@ -1362,3 +1362,18 @@ a {
     margin-left: 0;
   }
 }
+
+/* Trois boutons dans la barre de titre, c'est un de plus qu'avant : sur un
+   écran étroit ils doivent se serrer, et pouvoir passer sous le titre plutôt
+   que d'élargir la page. */
+@media (max-width: 640px) {
+  .brand {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .btn-theme,
+  .btn-kofi {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
