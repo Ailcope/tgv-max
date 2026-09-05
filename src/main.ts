@@ -26,6 +26,17 @@ const stations = new StationRepository();
 // (VITE_FREEPLACES_RELAY). Sans lui, les vues affichent ce qu'elles affichaient.
 const freePlaces = new FreePlacesRepository();
 
+/**
+ * Service worker : le site reste consultable sans réseau, et s'installe comme
+ * une application. En développement il n'a rien à faire là : son cache
+ * masquerait les modifications qu'on vient d'écrire.
+ */
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+  });
+}
+
 const heatmap = new HeatmapView(trips, stations);
 
 const app = new App(
