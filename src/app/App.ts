@@ -2,6 +2,7 @@ import { KOFI_URL } from "@/config";
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { frDateTime } from "@/lib/dates";
+import { THEME_LABELS, themeChoice, toggleTheme } from "@/lib/theme";
 import { CommandPalette } from "@/ui/components/CommandPalette";
 import { KofiPanel } from "@/ui/components/KofiPanel";
 import { clear, el } from "@/ui/dom";
@@ -51,7 +52,13 @@ export class App {
     }
 
     const freshness = el("div", { class: "freshness" });
-    clear(this.root).append(this.header(nav), freshness, panelsHost, this.kofi.element, this.palette.element);
+    clear(this.root).append(
+      this.header(nav),
+      freshness,
+      panelsHost,
+      this.kofi.element,
+      this.palette.element,
+    );
 
     window.addEventListener("hashchange", () => this.activate(this.currentId()));
     window.addEventListener("keydown", (e) => {
@@ -98,8 +105,17 @@ export class App {
         el("button", {
           class: "btn-search",
           title: "Recherche rapide (⌘K / Ctrl+K)",
-          html: '🔍 <kbd>⌘K</kbd>',
+          html: "🔍 <kbd>⌘K</kbd>",
           onclick: () => this.palette.open(),
+        }),
+        el("button", {
+          class: "btn-theme",
+          title: "Thème : suivre le système, clair, ou sombre",
+          text: THEME_LABELS[themeChoice()],
+          onclick: (e: Event) => {
+            const btn = e.currentTarget as HTMLElement;
+            btn.textContent = THEME_LABELS[toggleTheme()];
+          },
         }),
         el("a", {
           class: "btn-kofi",
