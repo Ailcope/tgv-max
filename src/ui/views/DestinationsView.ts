@@ -36,7 +36,7 @@ interface GroupedStation {
 }
 
 /**
- * Toutes les destinations avec une place MAX depuis une gare — ou, en mode
+ * Toutes les destinations avec une place MAX depuis une gare, ou, en mode
  * « Vers une gare », tous les départs qui mènent à une gare choisie.
  */
 export class DestinationsView implements View {

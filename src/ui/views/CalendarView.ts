@@ -22,10 +22,10 @@ import type { View } from "./View";
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 const LEGEND: [string, string][] = [
   ["0", "lvl0"],
-  ["1–2", "lvl1"],
-  ["3–5", "lvl2"],
-  ["6–9", "lvl3"],
-  ["10+", "lvl4"],
+  ["1 à 2", "lvl1"],
+  ["3 à 5", "lvl2"],
+  ["6 à 9", "lvl3"],
+  ["10 et plus", "lvl4"],
 ];
 
 /** 30-day availability heatmap for one origin/destination. */

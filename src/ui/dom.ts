@@ -1,4 +1,4 @@
-/** Tiny typed DOM helpers — a pragmatic alternative to a UI framework. */
+/** Tiny typed DOM helpers: a pragmatic alternative to a UI framework. */
 
 export type Child = Node | string | null | undefined;
 
