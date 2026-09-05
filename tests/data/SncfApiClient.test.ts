@@ -94,6 +94,29 @@ describe("SncfApiClient.all", () => {
     expect(peak).toBeGreaterThan(1);
   });
 
+  it("va au bout d'une requête agrégée, dont le total annoncé ne compte que la page", async () => {
+    // `group_by` : l'API rend `total_count` = taille de la page. S'y fier
+    // revient à s'arrêter à la centième ligne, et une carte de chaleur de
+    // trente colonnes n'en montre alors qu'une.
+    const calls: string[] = [];
+    const client = new SncfApiClient(async (input) => {
+      const url = new URL(String(input));
+      calls.push(url.toString());
+      const offset = Number(url.searchParams.get("offset") ?? 0);
+      const results = Array.from(
+        { length: Math.max(0, Math.min(100, 2160 - offset)) },
+        (_, i) => offset + i,
+      );
+      return ok({ total_count: results.length, results });
+    }, BASE);
+
+    const rows = await client.all<number>("x=1", { groupBy: "destination, date" }, 6000);
+    expect(rows).toHaveLength(2160);
+    expect(rows).toEqual([...rows].sort((a, b) => a - b));
+    // Une vague après la page incomplète serait du gaspillage.
+    expect(calls.length).toBeLessThan(30);
+  });
+
   it("respecte le plafond sans demander de page au-delà", async () => {
     const calls: string[] = [];
     const rows = await pagedClient(5000, calls).all<number>("x=1", {}, 250);

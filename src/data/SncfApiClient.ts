@@ -59,12 +59,26 @@ export class SncfApiClient {
    *
    * L'ordre est celui des offsets, pas celui des réponses : le tri demandé à
    * l'API doit se retrouver dans le résultat.
+   *
+   * Deux régimes, selon ce que vaut `total_count`. Sur une requête ordinaire il
+   * annonce le nombre de lignes, et toutes les pages peuvent être demandées
+   * d'un coup. Sur une requête agrégée (`group_by`) il ne compte que la page
+   * rendue : il n'annonce rien, et croire ce chiffre revient à s'arrêter à la
+   * centième ligne. On avance alors par vagues, jusqu'à une page incomplète.
    */
   async all<T>(where: string, q: RecordsQuery = {}, cap = 2000): Promise<T[]> {
     const first = await this.records<T>(where, { ...q, limit: PAGE_SIZE });
     if (first.results.length < PAGE_SIZE) return first.results;
 
-    const total = Math.min(first.total_count, cap);
+    const rest =
+      first.total_count > first.results.length
+        ? await this.byTotal<T>(where, q, Math.min(first.total_count, cap))
+        : await this.byWaves<T>(where, q, cap);
+    return [first.results, ...rest].flat().slice(0, cap);
+  }
+
+  /** Pages suivantes quand le total est connu : toutes demandées de front. */
+  private async byTotal<T>(where: string, q: RecordsQuery, total: number): Promise<T[][]> {
     const offsets: number[] = [];
     for (let offset = PAGE_SIZE; offset < total; offset += PAGE_SIZE) offsets.push(offset);
 
@@ -83,7 +97,24 @@ export class SncfApiClient {
     await Promise.all(
       Array.from({ length: Math.min(PAGE_CONCURRENCY, offsets.length) }, () => worker()),
     );
-    return [first.results, ...pages].flat().slice(0, cap);
+    return pages;
+  }
+
+  /** Pages suivantes quand le total est inconnu : par vagues, jusqu'à la fin. */
+  private async byWaves<T>(where: string, q: RecordsQuery, cap: number): Promise<T[][]> {
+    const pages: T[][] = [];
+    const stride = PAGE_SIZE * PAGE_CONCURRENCY;
+    for (let start = PAGE_SIZE; start < cap; start += stride) {
+      const offsets: number[] = [];
+      for (let o = start; o < Math.min(start + stride, cap); o += PAGE_SIZE) offsets.push(o);
+      const wave = await Promise.all(
+        offsets.map((offset) => this.records<T>(where, { ...q, limit: PAGE_SIZE, offset })),
+      );
+      pages.push(...wave.map((page) => page.results));
+      // Une page incomplète marque la fin : les suivantes seraient vides.
+      if (wave.some((page) => page.results.length < PAGE_SIZE)) break;
+    }
+    return pages;
   }
 
   /** Dataset metadata (used for the last-refresh timestamp). */
