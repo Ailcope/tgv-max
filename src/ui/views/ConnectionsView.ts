@@ -1,9 +1,11 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import { planJourneys, transferWaits, type Journey } from "@/domain/connections";
+import { withinHours } from "@/domain/hours";
 import { durationMinutes, formatDuration } from "@/domain/time";
 import { frDateLong, iso, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
+import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { rememberedSelect } from "../components/options";
 import { StationPair } from "../components/StationPair";
 import { empty, errorState, hint, loading } from "../components/states";
@@ -30,6 +32,8 @@ export class ConnectionsView implements View {
   private readonly summary = el("div", { class: "summary" });
   private readonly out = el("div", { class: "rt-list" });
   private loaded = false;
+  /** Les itinéraires calculés, gardés pour refiltrer sans tout recalculer. */
+  private journeys: Journey[] = [];
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -74,6 +78,7 @@ export class ConnectionsView implements View {
     const controls = el("div", { class: "controls" }, [
       ...this.pair.nodes,
       field("Date", this.dateInput),
+      ...hourFields(),
       field("Correspondance", this.transferSelect),
       field("Jusqu'à", this.legsSelect),
       button("Chercher", "btn-primary", () => void this.run()),
@@ -86,6 +91,9 @@ export class ConnectionsView implements View {
       this.summary,
       this.out,
     ]);
+    // Plage horaire commune : une modification faite ailleurs doit se voir ici
+    // sans relancer la recherche, puisque les itinéraires sont déjà calculés.
+    hourFilter.subscribe(() => this.rerender());
   }
 
   activate(): void {
@@ -111,18 +119,30 @@ export class ConnectionsView implements View {
     clear(this.summary);
     try {
       const trains = await this.repo.allTrainsOn(date);
-      const journeys = planJourneys(trains, from, to, {
+      this.journeys = planJourneys(trains, from, to, {
         maxLegs: Number(this.legsSelect.value),
         minTransferMinutes: Number(this.transferSelect.value),
       });
       this.loaded = true;
-      this.render(from, to, date, journeys);
+      this.render(from, to, date, this.journeys);
     } catch (e) {
       errorState(this.out, (e as Error).message);
     }
   }
 
-  private render(from: string, to: string, date: string, journeys: Journey[]): void {
+  /** Redessine sans rechercher : la plage horaire a changé, pas le trajet. */
+  private rerender(): void {
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
+    if (!from || !to || !this.journeys.length) return;
+    this.render(from, to, this.dateInput.value, this.journeys);
+  }
+
+  private render(from: string, to: string, date: string, all: Journey[]): void {
+    const journeys = all.filter((j) =>
+      withinHours(j.departure, j.arrival, j.arrivesNextDay, hourFilter.value),
+    );
+    const hidden = all.length - journeys.length;
     const directs = journeys.filter((j) => j.transfers === 0).length;
     clear(this.summary).appendChild(
       el("div", {
@@ -134,14 +154,17 @@ export class ConnectionsView implements View {
               (directs
                 ? ` dont ${directs} direct${directs > 1 ? "s" : ""}`
                 : " (aucun direct avec place MAX)")
-            : `<span class="ko">aucun itinéraire</span> avec place MAX, même avec correspondances`),
+            : `<span class="ko">aucun itinéraire</span> avec place MAX, même avec correspondances`) +
+          hoursNote(hidden),
       }),
     );
     clear(this.out);
     if (!journeys.length) {
       empty(
         this.out,
-        "Rien ce jour-là. Essayez une autre date, ou augmentez le nombre de correspondances.",
+        hidden
+          ? "Rien dans cette plage horaire. Élargissez-la, ou changez de date."
+          : "Rien ce jour-là. Essayez une autre date, ou augmentez le nombre de correspondances.",
       );
       return;
     }

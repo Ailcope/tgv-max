@@ -1,9 +1,11 @@
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
 import type { StationRepository } from "@/data/StationRepository";
 import { heatLevel } from "@/domain/availability";
-import type { DailyCounts } from "@/domain/models";
+import { trainWithinHours } from "@/domain/hours";
+import type { DailyCounts, Train } from "@/domain/models";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { prettyStation } from "@/lib/text";
+import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { StationPair } from "../components/StationPair";
 import { empty, errorState, loading } from "../components/states";
 import { reserveButton, trainRow } from "../components/trains";
@@ -31,6 +33,11 @@ export class CalendarView implements View {
   private readonly summary = el("div", { class: "summary" });
   private readonly grid = el("div", { class: "cal" });
   private readonly detail = el("div", { class: "detail" });
+  /** Les trains du jour ouvert, gardés pour pouvoir refiltrer sans requête. */
+  private dayTrains: Train[] = [];
+  private dayDate = "";
+  private readonly dayList = el("div", { class: "train-list" });
+  private readonly daySub = el("span", { class: "detail-sub" });
 
   constructor(
     private readonly repo: TgvmaxRepository,
@@ -46,8 +53,12 @@ export class CalendarView implements View {
 
     const controls = el("div", { class: "controls" }, [
       ...this.pair.nodes,
+      ...hourFields(),
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
+    // La plage horaire est commune à tous les écrans : quand elle change
+    // ailleurs, la journée ouverte ici doit suivre.
+    hourFilter.subscribe(() => this.renderDayList());
     this.element = el("section", { class: "panel" }, [
       controls,
       this.summary,
@@ -154,25 +165,37 @@ export class CalendarView implements View {
     cell.classList.add("selected");
     loading(this.detail, `Trajets du ${frDate(date)}…`);
     try {
-      const list = await this.repo.trains(from, to, date);
+      this.dayTrains = await this.repo.trains(from, to, date);
+      this.dayDate = date;
       clear(this.detail);
       this.detail.appendChild(
         el("div", { class: "detail-head" }, [
           el("h3", { text: frDateLong(date) }),
-          el("span", { class: "detail-sub", text: `${list.length} trajet(s) avec place MAX` }),
+          this.daySub,
           reserveButton("Réserver sur SNCF Connect ↗"),
         ]),
       );
-      const box = el(
-        "div",
-        { class: "train-list" },
-        list.map((t) => trainRow(t)),
-      );
-      this.detail.appendChild(box);
+      this.detail.appendChild(this.dayList);
+      this.renderDayList();
       this.detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (e) {
       errorState(this.detail, (e as Error).message);
     }
+  }
+
+  /**
+   * (Re)dessine la liste du jour ouvert selon la plage horaire.
+   *
+   * Le filtre ne relance aucune requête : les trains sont déjà là. Ce qui est
+   * écarté est compté et dit, sinon une liste vide passerait pour une absence
+   * de place alors que c'est un réglage qui la vide.
+   */
+  private renderDayList(): void {
+    if (!this.dayDate) return;
+    const kept = this.dayTrains.filter((t) => trainWithinHours(t, hourFilter.value));
+    this.daySub.textContent =
+      `${kept.length} trajet(s) avec place MAX` + hoursNote(this.dayTrains.length - kept.length);
+    clear(this.dayList).append(...kept.map((t) => trainRow(t)));
   }
 
   private legend(): HTMLElement {

@@ -1,11 +1,13 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { TgvmaxRepository } from "@/data/TgvmaxRepository";
+import { isOpen, trainWithinHours } from "@/domain/hours";
 import type { DestinationAvailability, OriginAvailability, Train } from "@/domain/models";
-import { formatDuration } from "@/domain/time";
+import { durationMinutes, formatDuration } from "@/domain/time";
 import { addDays, frDateLong, iso, nextSaturday, today } from "@/lib/dates";
 import { formatRidership } from "@/lib/format";
 import { prettyStation } from "@/lib/text";
 import { flag } from "../components/flags";
+import { hourFields, hourFilter } from "../components/hours";
 import { rememberedSelect } from "../components/options";
 import { StationPicker } from "../components/StationPicker";
 import { empty, errorState, loading } from "../components/states";
@@ -111,6 +113,7 @@ export class DestinationsView implements View {
       field("Date", this.dateInput),
       field("Trajet max", this.durSelect),
       field("Trier par", this.sortSelect),
+      ...hourFields(),
       button("Chercher", "btn-primary", () => void this.run()),
     ]);
     const chips = el("div", { class: "chips" }, [
@@ -120,6 +123,11 @@ export class DestinationsView implements View {
       button("🎲 Surprends-moi", "chip chip-accent", () => this.surprise()),
     ]);
     this.element = el("section", { class: "panel" }, [controls, chips, this.summary, this.out]);
+    // Plage horaire commune : le tri et le filtrage se refont sur les résultats
+    // déjà chargés, sans nouvelle requête.
+    hourFilter.subscribe(() => {
+      if (this.loaded) this.render();
+    });
   }
 
   activate(): void {
@@ -179,9 +187,34 @@ export class DestinationsView implements View {
     }
   }
 
+  /**
+   * Applique la plage horaire à chaque destination.
+   *
+   * Une destination ne disparaît que si aucun de ses trains ne tient dans la
+   * plage ; sinon ses compteurs sont recalculés sur ce qui reste, sans quoi la
+   * carte annoncerait huit trajets et n'en montrerait qu'un.
+   */
+  private inHours(list: GroupedStation[]): GroupedStation[] {
+    const window = hourFilter.value;
+    if (isOpen(window)) return list;
+    return list.flatMap((r) => {
+      const kept = r.list.filter((t) => trainWithinHours(t, window));
+      if (!kept.length) return [];
+      return [
+        {
+          ...r,
+          list: kept,
+          trains: kept.length,
+          firstDeparture: kept.reduce((min, t) => (t.departure < min ? t.departure : min), "99:99"),
+          fastestMinutes: Math.min(...kept.map((t) => durationMinutes(t.departure, t.arrival))),
+        },
+      ];
+    });
+  }
+
   private filtered(): GroupedStation[] {
     const maxDur = Number(this.durSelect.value);
-    const list = this.results.filter((r) => !maxDur || r.fastestMinutes <= maxDur);
+    const list = this.inHours(this.results).filter((r) => !maxDur || r.fastestMinutes <= maxDur);
     const key = this.sortSelect.value as SortKey;
     const freq = (name: string): number => this.stations.get(name)?.ridership ?? 0;
     const comparators: Record<SortKey, (a: GroupedStation, b: GroupedStation) => number> = {
