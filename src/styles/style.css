@@ -416,7 +416,10 @@ a {
 }
 .cal-head {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  /* `minmax(0, 1fr)` et non `1fr` : sans cela une colonne refuse de descendre
+     sous la largeur de son contenu, et sur un téléphone les sept colonnes
+     élargissent la page entière au lieu de se serrer. */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 8px;
 }
@@ -429,7 +432,7 @@ a {
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
 .cell {
@@ -1205,6 +1208,12 @@ a {
   .tab-txt small {
     display: none;
   }
+  /* Une fois le sous-titre retiré, c'est l'intitulé lui-même qui serait tronqué
+     s'il continuait de se serrer. Les onglets gardent donc leur largeur et la
+     barre défile : « Correspondances » vaut mieux que « Co… ». */
+  .tab {
+    flex: 0 0 auto;
+  }
   .topbar {
     padding: 14px 16px 0;
   }
@@ -1231,8 +1240,16 @@ a {
     padding: 6px 10px;
     font-size: 12px;
   }
+  /* La barre de titre doit pouvoir se replier plutôt que d'élargir la page :
+     un débordement horizontal ici décale tout le reste du site. */
   .brand {
     padding-right: 92px;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .brand > div {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .brand h1 {
     font-size: 20px;
