@@ -64,6 +64,24 @@ export function trainRow(t: Train, showOD = false, fastest = false): HTMLElement
   return el("div", { class: `train${t.hasMaxSeat ? "" : " train-full"}` }, children);
 }
 
+/**
+ * Ligne d'attente entre deux jambes d'un itinéraire.
+ *
+ * Une correspondance change parfois de gare : « MASSY TGV » et « MASSY
+ * PALAISEAU » sont deux gares mitoyennes que le planificateur raccorde. Il faut
+ * le dire, sinon le voyageur attend sur le mauvais quai.
+ */
+export function transferRow(previous: Train, next: Train, minutes: number): HTMLElement {
+  const wait = formatDuration(minutes);
+  const onFoot = previous.destination !== next.origin;
+  return el("div", {
+    class: onFoot ? "jy-wait jy-wait-walk" : "jy-wait",
+    text: onFoot
+      ? `🚶 ${wait} de correspondance, à pied de ${prettyStation(previous.destination)} à ${prettyStation(next.origin)}`
+      : `⏱ ${wait} de correspondance à ${prettyStation(next.origin)}`,
+  });
+}
+
 /** Lien de réservation vers SNCF Connect, pré-rempli quand on connaît le trajet. */
 export const reserveButton = (
   label = "Réserver ↗",

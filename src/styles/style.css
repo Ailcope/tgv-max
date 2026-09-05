@@ -1302,6 +1302,13 @@ a {
   border-left: 3px dotted var(--line);
   margin-left: 14px;
 }
+/* Une correspondance qui change de gare se marche : le trait plein la
+   distingue de l'attente sur le même quai, qui elle ne demande rien. */
+.jy-wait-walk {
+  color: var(--ink);
+  border-left-style: solid;
+  border-left-color: var(--pink);
+}
 
 /* Trains de nuit + arrivée le lendemain */
 .axe-nuit {

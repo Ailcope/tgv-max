@@ -1,4 +1,5 @@
 import stationsData from "@/assets/data/stations.json";
+import { buildInterchanges } from "@/domain/interchanges";
 import type { Station } from "@/domain/models";
 import { normalize } from "@/lib/text";
 
@@ -19,6 +20,8 @@ export interface RawStation {
 export class StationRepository {
   private readonly stations: Station[];
   private readonly byKey = new Map<string, Station>();
+  /** Table des échangeurs, calculée au premier besoin (voir {@link hub}). */
+  private interchanges?: Map<string, string>;
 
   constructor(data: RawStation[] = stationsData as unknown as RawStation[]) {
     this.stations = data.map((s) => ({ ...s, searchKey: normalize(s.name) }));
@@ -28,6 +31,19 @@ export class StationRepository {
   /** All stations, ordered by popularity (as generated). */
   all(): Station[] {
     return this.stations;
+  }
+
+  /**
+   * Nom de l'échangeur d'une gare : le sien, sauf quand une autre gare la
+   * touche et lui donne son nom (« MASSY PALAISEAU » → « MASSY TGV »).
+   *
+   * Le calcul compare les gares deux à deux, une seule fois par session : c'est
+   * une centaine de milliers de distances, quelques millisecondes, et
+   * l'écrasante majorité des visites n'en a pas besoin.
+   */
+  hub(name: string): string {
+    this.interchanges ??= buildInterchanges(this.stations);
+    return this.interchanges.get(name) ?? name;
   }
 
   /** Exact lookup by raw or pretty name (normalized). */

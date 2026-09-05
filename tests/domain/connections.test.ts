@@ -3,7 +3,13 @@ import { planJourneys, transferWaits } from "@/domain/connections";
 import type { Train } from "@/domain/models";
 
 let no = 0;
-function train(origin: string, destination: string, departure: string, arrival: string, hasMaxSeat = true): Train {
+function train(
+  origin: string,
+  destination: string,
+  departure: string,
+  arrival: string,
+  hasMaxSeat = true,
+): Train {
   no += 1;
   return {
     date: "2026-07-08",
@@ -121,8 +127,71 @@ describe("planJourneys — trains de nuit", () => {
 describe("planJourneys — bornes", () => {
   it("caps results at maxResults", () => {
     const trains = Array.from({ length: 20 }, (_, i) =>
-      train("A", "B", `${String(6 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`, `${String(8 + Math.floor(i / 2)).padStart(2, "0")}:00`),
+      train(
+        "A",
+        "B",
+        `${String(6 + Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`,
+        `${String(8 + Math.floor(i / 2)).padStart(2, "0")}:00`,
+      ),
     );
     expect(planJourneys(trains, "A", "B", { maxResults: 5 })).toHaveLength(5);
+  });
+});
+
+describe("planJourneys : échangeurs", () => {
+  // « X1 » et « X2 » sont les deux noms d'un même échangeur, comme MASSY TGV et
+  // MASSY PALAISEAU dans le jeu de données.
+  const hub = (s: string): string => (s === "X2" ? "X1" : s);
+  const trains = [train("A", "X1", "08:00", "10:00"), train("X2", "B", "10:30", "12:00")];
+
+  it("ne raccorde rien sans regroupement", () => {
+    expect(planJourneys(trains, "A", "B")).toHaveLength(0);
+  });
+
+  it("raccorde deux trains qu'un court trajet à pied sépare", () => {
+    const res = planJourneys(trains, "A", "B", { hub, walkMinutes: 10 });
+    expect(res).toHaveLength(1);
+    expect(res[0].legs.map((l) => l.origin + ">" + l.destination)).toEqual(["A>X1", "X2>B"]);
+  });
+
+  it("ajoute le temps de marche au temps de correspondance", () => {
+    // 10:00 + 15 min de correspondance + 20 min de marche = 10:35 > 10:30.
+    expect(planJourneys(trains, "A", "B", { hub, walkMinutes: 20 })).toHaveLength(0);
+  });
+
+  it("n'ajoute pas de marche quand la correspondance reste dans la même gare", () => {
+    const res = planJourneys(
+      [train("A", "X1", "08:00", "10:00"), train("X1", "B", "10:15", "12:00")],
+      "A",
+      "B",
+      { hub, walkMinutes: 60 },
+    );
+    expect(res).toHaveLength(1);
+  });
+
+  it("reconnaît la destination sous son autre nom", () => {
+    const res = planJourneys([train("A", "X1", "08:00", "10:00")], "A", "X2", { hub });
+    expect(res).toHaveLength(1);
+    expect(res[0].transfers).toBe(0);
+  });
+
+  it("reconnaît l'origine sous son autre nom", () => {
+    const res = planJourneys([train("X2", "B", "08:00", "10:00")], "X1", "B", { hub });
+    expect(res).toHaveLength(1);
+  });
+
+  it("ne repasse pas par un échangeur déjà traversé", () => {
+    const res = planJourneys(
+      [
+        train("A", "X1", "08:00", "09:00"),
+        train("X2", "A", "09:30", "10:30"), // retour à A par l'autre quai : interdit
+        train("A", "B", "11:00", "12:00"),
+      ],
+      "A",
+      "B",
+      { hub, maxLegs: 4 },
+    );
+    expect(res).toHaveLength(1);
+    expect(res[0].transfers).toBe(0);
   });
 });

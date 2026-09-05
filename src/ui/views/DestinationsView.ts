@@ -279,9 +279,14 @@ export class DestinationsView implements View {
     maxLegs: number,
   ): Promise<GroupedStation[]> {
     const trains = await this.repo.allTrainsOn(date);
-    const known = new Set(direct.map((d) => d.name));
+    // Les directs sont ramenés à leur échangeur : sans quoi une gare desservie
+    // en direct reviendrait une seconde fois sous le nom de sa voisine.
+    const known = new Set(direct.map((d) => this.stations.hub(d.name)));
     const extra: GroupedStation[] = [];
-    for (const r of reachableFrom(trains, station, { maxLegs })) {
+    for (const r of reachableFrom(trains, station, {
+      maxLegs,
+      hub: (s) => this.stations.hub(s),
+    })) {
       if (r.minTransfers === 0 || known.has(r.station)) continue;
       extra.push({
         name: r.station,

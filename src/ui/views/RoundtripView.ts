@@ -19,7 +19,7 @@ import { prettyStation } from "@/lib/text";
 import { rememberedSelect } from "../components/options";
 import { StationPair } from "../components/StationPair";
 import { empty, errorState, loading, skeleton } from "../components/states";
-import { axisBadge, legReserveLink } from "../components/trains";
+import { axisBadge, legReserveLink, transferRow } from "../components/trains";
 import { button, clear, el, field } from "../dom";
 import { createMap, destIcon, type MapHandle, originIcon } from "../map/MapKit";
 import type { View } from "./View";
@@ -320,15 +320,16 @@ export class RoundtripView implements View {
     const late = Number(this.lateSelect.value);
     const outbound: JourneysByDate = {};
     const inbound: JourneysByDate = {};
+    const opts = { maxLegs, hub: (s: string) => this.stations.hub(s) };
     for (const [date, trains] of days) {
       if (departDates.includes(date)) {
-        const found = planJourneys(trains, from, to, { maxLegs }).filter(
+        const found = planJourneys(trains, from, to, opts).filter(
           (j) => hhmmToMinutes(j.departure) >= early,
         );
         if (found.length) outbound[date] = found;
       }
       if (returnDates.includes(date)) {
-        const found = planJourneys(trains, to, from, { maxLegs }).filter(
+        const found = planJourneys(trains, to, from, opts).filter(
           (j) => !late || hhmmToMinutes(j.departure) <= late,
         );
         if (found.length) inbound[date] = found;
@@ -601,14 +602,7 @@ function journeyBlock(label: string, a: string, b: string, j: Journey, date: str
   }
   const waits = transferWaits(j);
   j.legs.forEach((t, i) => {
-    if (i > 0) {
-      block.appendChild(
-        el("div", {
-          class: "jy-wait",
-          text: `⏱ ${formatDuration(waits[i - 1])} de correspondance à ${prettyStation(t.origin)}`,
-        }),
-      );
-    }
+    if (i > 0) block.appendChild(transferRow(j.legs[i - 1], t, waits[i - 1]));
     block.appendChild(
       el("div", { class: "train" }, [
         el("span", {

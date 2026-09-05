@@ -20,6 +20,15 @@ const fixture: RawStation[] = [
   },
   { name: "MARSEILLE BLANCARDE", lat: 43.29, lon: 5.4, country: "FR", traffic: 5, ridership: 10 },
   { name: "BARCELONA SANTS", lat: 41.38, lon: 2.14, country: "ES", traffic: 8, ridership: 0 },
+  { name: "MASSY TGV", lat: 48.72584, lon: 2.26136, country: "FR", traffic: 40, ridership: 100 },
+  {
+    name: "MASSY PALAISEAU",
+    lat: 48.72663,
+    lon: 2.25852,
+    country: "FR",
+    traffic: 2,
+    ridership: 90,
+  },
 ];
 
 const repo = new StationRepository(fixture);
@@ -50,5 +59,20 @@ describe("StationRepository.search", () => {
 
   it("respects the limit", () => {
     expect(repo.search("", 2)).toHaveLength(2);
+  });
+});
+
+describe("StationRepository.hub", () => {
+  it("rend le nom de l'échangeur pour deux gares mitoyennes", () => {
+    expect(repo.hub("MASSY PALAISEAU")).toBe("MASSY TGV");
+    expect(repo.hub("MASSY TGV")).toBe("MASSY TGV");
+  });
+
+  it("laisse seules deux gares que la ville sépare", () => {
+    expect(repo.hub("MARSEILLE BLANCARDE")).toBe("MARSEILLE BLANCARDE");
+  });
+
+  it("rend le nom tel quel pour une gare inconnue", () => {
+    expect(repo.hub("NOWHERE")).toBe("NOWHERE");
   });
 });

@@ -111,3 +111,34 @@ describe("reachableFrom", () => {
     expect(found.map((r) => r.station)).toEqual(["B"]);
   });
 });
+
+describe("reachableFrom : échangeurs", () => {
+  const hub = (s: string): string => (s === "X2" ? "X1" : s);
+
+  it("repart d'un échangeur atteint sous son autre nom", () => {
+    const trains = [train("A", "X1", "08:00", "10:00"), train("X2", "C", "10:30", "12:00")];
+    expect(reachableFrom(trains, "A", { maxLegs: 2 }).map((r) => r.station)).toEqual(["X1"]);
+    expect(
+      reachableFrom(trains, "A", { maxLegs: 2, hub, walkMinutes: 10 }).map((r) => r.station),
+    ).toEqual(["X1", "C"]);
+  });
+
+  it("ne propose qu'une fois un échangeur nommé de deux façons", () => {
+    const found = reachableFrom(
+      [train("A", "X1", "08:00", "10:00"), train("A", "X2", "09:00", "11:00")],
+      "A",
+      { hub },
+    );
+    expect(found.map((r) => r.station)).toEqual(["X1"]);
+    expect(found[0].journeys).toBe(2);
+  });
+
+  it("ne propose pas la gare de départ sous son autre nom", () => {
+    const found = reachableFrom(
+      [train("X1", "A", "08:00", "10:00"), train("A", "X2", "10:30", "12:00")],
+      "X2",
+      { maxLegs: 2, hub },
+    );
+    expect(found.map((r) => r.station)).toEqual(["A"]);
+  });
+});

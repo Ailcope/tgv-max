@@ -1,3 +1,4 @@
+import { WALK_MINUTES } from "./interchanges";
 import type { Train } from "./models";
 import { durationMinutes, hhmmToMinutes } from "./time";
 
@@ -23,6 +24,14 @@ export interface JourneyOptions {
   minTransferMinutes?: number;
   /** Maximum journeys returned. Default 12. */
   maxResults?: number;
+  /**
+   * Nom de l'échangeur d'une gare, pour raccorder deux gares mitoyennes que le
+   * jeu de données nomme différemment (voir {@link buildInterchanges}).
+   * Par défaut, chaque gare n'est qu'elle-même.
+   */
+  hub?: (station: string) => string;
+  /** Marche ajoutée quand la correspondance change de gare. Défaut 10 min. */
+  walkMinutes?: number;
 }
 
 interface Node {
@@ -49,13 +58,16 @@ export function planJourneys(
   const maxLegs = Math.min(opts.maxLegs ?? 3, 4);
   const minTransfer = opts.minTransferMinutes ?? 15;
   const maxResults = opts.maxResults ?? 12;
+  const hub = opts.hub ?? ((s: string) => s);
+  const walk = opts.walkMinutes ?? WALK_MINUTES;
 
   const byOrigin = new Map<string, Train[]>();
   for (const t of trains) {
     if (!t.hasMaxSeat) continue;
-    const list = byOrigin.get(t.origin);
+    const key = hub(t.origin);
+    const list = byOrigin.get(key);
     if (list) list.push(t);
-    else byOrigin.set(t.origin, [t]);
+    else byOrigin.set(key, [t]);
   }
   for (const list of byOrigin.values()) {
     list.sort((a, b) => hhmmToMinutes(a.departure) - hhmmToMinutes(b.departure));
@@ -85,37 +97,39 @@ export function planJourneys(
   const stack: Node[] = [];
 
   // Seed: every MAX train leaving the origin.
-  for (const t of byOrigin.get(from) ?? []) {
+  for (const t of byOrigin.get(hub(from)) ?? []) {
     const depAbs = hhmmToMinutes(t.departure);
     stack.push({
       legs: [t],
       arrivalAbs: depAbs + durationMinutes(t.departure, t.arrival),
-      visited: new Set([from, t.destination]),
+      visited: new Set([hub(from), hub(t.destination)]),
     });
   }
 
   while (stack.length) {
     const node = stack.pop() as Node;
     const last = node.legs[node.legs.length - 1];
+    const here = hub(last.destination);
 
-    if (last.destination === to) {
+    if (here === hub(to)) {
       journeys.push(toJourney(node));
       continue;
     }
     if (node.legs.length >= maxLegs) continue;
-    if (dominated(last.destination, node.legs.length, node.arrivalAbs)) continue;
-    record(last.destination, node.legs.length, node.arrivalAbs);
+    if (dominated(here, node.legs.length, node.arrivalAbs)) continue;
+    record(here, node.legs.length, node.arrivalAbs);
     if (node.arrivalAbs >= 24 * 60) continue; // arrived next day: no same-date train follows
 
     const earliestNext = node.arrivalAbs + minTransfer;
-    for (const t of byOrigin.get(last.destination) ?? []) {
+    for (const t of byOrigin.get(here) ?? []) {
       const depAbs = hhmmToMinutes(t.departure);
-      if (depAbs < earliestNext) continue;
-      if (node.visited.has(t.destination)) continue; // no loops
+      // Changer de gare au sein de l'échangeur se fait à pied, pas d'un quai à l'autre.
+      if (depAbs < earliestNext + (t.origin === last.destination ? 0 : walk)) continue;
+      if (node.visited.has(hub(t.destination))) continue; // no loops
       stack.push({
         legs: [...node.legs, t],
         arrivalAbs: depAbs + durationMinutes(t.departure, t.arrival),
-        visited: new Set(node.visited).add(t.destination),
+        visited: new Set(node.visited).add(hub(t.destination)),
       });
     }
   }
@@ -193,13 +207,16 @@ export function reachableFrom(
 ): Reachable[] {
   const maxLegs = Math.min(opts.maxLegs ?? 2, 4);
   const minTransfer = opts.minTransferMinutes ?? 15;
+  const hub = opts.hub ?? ((s: string) => s);
+  const walk = opts.walkMinutes ?? WALK_MINUTES;
 
   const byOrigin = new Map<string, Train[]>();
   for (const t of trains) {
     if (!t.hasMaxSeat) continue;
-    const list = byOrigin.get(t.origin);
+    const key = hub(t.origin);
+    const list = byOrigin.get(key);
     if (list) list.push(t);
-    else byOrigin.set(t.origin, [t]);
+    else byOrigin.set(key, [t]);
   }
   for (const list of byOrigin.values()) {
     list.sort((a, b) => hhmmToMinutes(a.departure) - hhmmToMinutes(b.departure));
@@ -209,27 +226,28 @@ export function reachableFrom(
   const seen = new Map<string, number>(); // gare → meilleure arrivée déjà explorée
   const stack: Node[] = [];
 
-  for (const t of byOrigin.get(from) ?? []) {
+  for (const t of byOrigin.get(hub(from)) ?? []) {
     const depAbs = hhmmToMinutes(t.departure);
     stack.push({
       legs: [t],
       arrivalAbs: depAbs + durationMinutes(t.departure, t.arrival),
-      visited: new Set([from, t.destination]),
+      visited: new Set([hub(from), hub(t.destination)]),
     });
   }
 
   while (stack.length) {
     const node = stack.pop() as Node;
     const last = node.legs[node.legs.length - 1];
+    const here = hub(last.destination);
     const journey = toJourney(node);
 
     // La gare d'origine peut réapparaître au bout d'une boucle : ce n'est pas
     // une destination, on ne la propose pas.
-    if (last.destination !== from) {
-      const current = found.get(last.destination);
+    if (here !== hub(from)) {
+      const current = found.get(here);
       if (!current) {
-        found.set(last.destination, {
-          station: last.destination,
+        found.set(here, {
+          station: here,
           best: journey,
           journeys: 1,
           minTransfers: journey.transfers,
@@ -244,18 +262,19 @@ export function reachableFrom(
     if (node.legs.length >= maxLegs) continue;
     if (node.arrivalAbs >= 24 * 60) continue; // train de nuit : plus rien derrière
     // Ne repartir d'une gare que si on y arrive plus tôt qu'à la visite précédente.
-    const before = seen.get(last.destination);
+    const before = seen.get(here);
     if (before !== undefined && before <= node.arrivalAbs) continue;
-    seen.set(last.destination, node.arrivalAbs);
+    seen.set(here, node.arrivalAbs);
 
     const earliestNext = node.arrivalAbs + minTransfer;
-    for (const t of byOrigin.get(last.destination) ?? []) {
-      if (hhmmToMinutes(t.departure) < earliestNext) continue;
-      if (node.visited.has(t.destination)) continue;
+    for (const t of byOrigin.get(here) ?? []) {
+      const depAbs = hhmmToMinutes(t.departure);
+      if (depAbs < earliestNext + (t.origin === last.destination ? 0 : walk)) continue;
+      if (node.visited.has(hub(t.destination))) continue;
       stack.push({
         legs: [...node.legs, t],
-        arrivalAbs: hhmmToMinutes(t.departure) + durationMinutes(t.departure, t.arrival),
-        visited: new Set(node.visited).add(t.destination),
+        arrivalAbs: depAbs + durationMinutes(t.departure, t.arrival),
+        visited: new Set(node.visited).add(hub(t.destination)),
       });
     }
   }

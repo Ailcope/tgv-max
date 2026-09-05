@@ -11,7 +11,13 @@ import { hourFields, hourFilter, hoursNote } from "../components/hours";
 import { rememberedSelect } from "../components/options";
 import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, hint, skeleton } from "../components/states";
-import { axisBadge, legReserveLink, nextDayChip, reserveButton } from "../components/trains";
+import {
+  axisBadge,
+  legReserveLink,
+  nextDayChip,
+  reserveButton,
+  transferRow,
+} from "../components/trains";
 import { button, clear, el, field } from "../dom";
 import type { View } from "./View";
 
@@ -42,7 +48,7 @@ export class ConnectionsView implements View {
 
   constructor(
     private readonly repo: TgvmaxRepository,
-    stations: StationRepository,
+    private readonly stations: StationRepository,
   ) {
     this.pair = new StationPair(stations, {
       fromPlaceholder: "ex. Paris",
@@ -146,6 +152,7 @@ export class ConnectionsView implements View {
       this.journeys = planJourneys(trains, from, to, {
         maxLegs: Number(this.legsSelect.value),
         minTransferMinutes: Number(this.transferSelect.value),
+        hub: (s) => this.stations.hub(s),
       });
       this.loaded = true;
       this.render(from, to, date, this.journeys);
@@ -222,14 +229,7 @@ export class ConnectionsView implements View {
     const legsBox = el("div", { class: "rt-legs" });
     const waits = transferWaits(j);
     j.legs.forEach((t, i) => {
-      if (i > 0) {
-        legsBox.appendChild(
-          el("div", {
-            class: "jy-wait",
-            text: `⏱ ${formatDuration(waits[i - 1])} de correspondance à ${prettyStation(t.origin)}`,
-          }),
-        );
-      }
+      if (i > 0) legsBox.appendChild(transferRow(j.legs[i - 1], t, waits[i - 1]));
       legsBox.appendChild(
         el("div", { class: "rt-leg" }, [
           el("span", {
