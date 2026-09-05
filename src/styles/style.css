@@ -1771,3 +1771,15 @@ a {
   color: var(--ok);
   white-space: nowrap;
 }
+
+/* ============ Gares récentes ============ */
+/* Le menu du champ de gare gagne deux intitulés de section : ils séparent ce
+   qui vient du visiteur de ce qui vient du catalogue. */
+.picker-head {
+  padding: 7px 10px 3px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}

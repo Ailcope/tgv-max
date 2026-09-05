@@ -1,5 +1,6 @@
 import type { StationRepository } from "@/data/StationRepository";
 import type { Station } from "@/domain/models";
+import { recentStations, rememberStation } from "@/lib/recent";
 import { prettyStation } from "@/lib/text";
 import { clear, el } from "../dom";
 import { flag } from "./flags";
@@ -22,6 +23,8 @@ export class StationPicker {
   private readonly input: HTMLInputElement;
   private readonly menu: HTMLElement;
   private results: Station[] = [];
+  /** Les lignes cliquables du menu, intitulés de section exclus. */
+  private rows: HTMLElement[] = [];
   private active = -1;
   private selected: Station | null = null;
 
@@ -69,36 +72,74 @@ export class StationPicker {
     this.selected = s;
     this.input.value = prettyStation(s.name);
     this.menu.classList.add("hidden");
+    rememberStation(s.name);
     this.opts.onSelect?.(s);
   }
 
-  private render(list: Station[]): void {
-    this.results = list;
+  /**
+   * Ce que propose le menu selon ce qui est saisi.
+   *
+   * Champ vide, le catalogue commence par les gares les plus fréquentées, ce
+   * qui ne dit rien de la personne devant l'écran. Ses dernières gares
+   * passent donc devant : c'est presque toujours l'une d'elles qu'elle
+   * cherche. Dès qu'elle tape, la recherche reprend ses droits.
+   */
+  private suggest(): void {
+    const found = this.repo.search(this.input.value);
+    if (this.input.value.trim()) {
+      this.render(found);
+      return;
+    }
+    const recent = recentStations()
+      .map((name) => this.repo.get(name))
+      .filter((s): s is Station => Boolean(s));
+    this.render(
+      found.filter((s) => !recent.some((r) => r.name === s.name)),
+      recent,
+    );
+  }
+
+  private render(list: Station[], recent: Station[] = []): void {
+    // Les récentes d'abord : la navigation au clavier suit ce même ordre.
+    this.results = [...recent, ...list];
+    this.rows = [];
     this.active = -1;
     clear(this.menu);
-    if (!list.length) {
+    if (!this.results.length) {
       this.menu.classList.add("hidden");
       return;
     }
-    list.forEach((s, i) => {
-      const row = el("div", { class: "picker-opt" }, [
-        el("span", { class: "po-name", text: prettyStation(s.name) }),
-        el("span", { class: "po-flag", text: flag(s.country) }),
-      ]);
-      row.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        this.choose(s);
-      });
-      row.addEventListener("mouseenter", () => this.setActive(i));
-      this.menu.appendChild(row);
-    });
+    if (recent.length) this.menu.appendChild(el("div", { class: "picker-head", text: "Récentes" }));
+    recent.forEach((s) => this.addRow(s));
+    if (recent.length && list.length) {
+      this.menu.appendChild(el("div", { class: "picker-head", text: "Autres gares" }));
+    }
+    list.forEach((s) => this.addRow(s));
     this.menu.classList.remove("hidden");
+  }
+
+  /** Ajoute une ligne de gare et l'enregistre pour la navigation au clavier. */
+  private addRow(s: Station): void {
+    const i = this.rows.length;
+    const row = el("div", { class: "picker-opt" }, [
+      el("span", { class: "po-name", text: prettyStation(s.name) }),
+      el("span", { class: "po-flag", text: flag(s.country) }),
+    ]);
+    row.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      this.choose(s);
+    });
+    row.addEventListener("mouseenter", () => this.setActive(i));
+    this.rows.push(row);
+    this.menu.appendChild(row);
   }
 
   private setActive(i: number): void {
     this.active = i;
-    [...this.menu.children].forEach((c, j) => c.classList.toggle("active", j === i));
-    this.menu.children[i]?.scrollIntoView({ block: "nearest" });
+    // Les intitulés de section sont des enfants du menu sans être des lignes :
+    // la surbrillance se règle sur les lignes, pas sur la position dans le DOM.
+    this.rows.forEach((row, j) => row.classList.toggle("active", j === i));
+    this.rows[i]?.scrollIntoView({ block: "nearest" });
   }
 
   /** Resolve free text on blur: exact match, else best prefix match, else nothing. */
@@ -122,9 +163,9 @@ export class StationPicker {
   private wire(): void {
     this.input.addEventListener("input", () => {
       this.selected = null;
-      this.render(this.repo.search(this.input.value));
+      this.suggest();
     });
-    this.input.addEventListener("focus", () => this.render(this.repo.search(this.input.value)));
+    this.input.addEventListener("focus", () => this.suggest());
     this.input.addEventListener("blur", () =>
       setTimeout(() => {
         this.commitFree();

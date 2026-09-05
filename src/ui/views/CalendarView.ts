@@ -9,11 +9,11 @@ import { isAlarming, tensionMessage, tensionOf } from "@/domain/tension";
 import { addDays, frDate, frDateLong, iso, MONTHS, parseISO, today } from "@/lib/dates";
 import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
-import { StationPicker } from "../components/StationPicker";
+import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, loading, skeleton } from "../components/states";
 import { alertBox } from "../components/tension";
 import { reserveButton, trainRow } from "../components/trains";
-import { button, clear, el, field, select } from "../dom";
+import { button, clear, el, select } from "../dom";
 import type { View } from "./View";
 
 const WEEKDAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -34,8 +34,7 @@ export class CalendarView implements View {
   readonly element: HTMLElement;
   onStateChange?: () => void;
 
-  private readonly fromPicker: StationPicker;
-  private readonly toPicker: StationPicker;
+  private readonly pair: StationPair;
   private readonly summary = el("div", { class: "summary" });
   private readonly grid = el("div", { class: "cal" });
   private readonly detail = el("div", { class: "detail" });
@@ -53,18 +52,13 @@ export class CalendarView implements View {
     stations: StationRepository,
     private readonly freePlaces?: FreePlacesRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, {
-      placeholder: "ex. Paris",
-      value: "PARIS (intramuros)",
-      onSelect: () => void this.run(),
+    this.pair = new StationPair(stations, {
+      fromPlaceholder: "ex. Paris",
+      toPlaceholder: "ex. Lyon",
+      fromValue: "PARIS (intramuros)",
+      toValue: "LYON (intramuros)",
+      onChange: () => void this.run(),
     });
-    this.toPicker = new StationPicker(stations, {
-      placeholder: "ex. Lyon",
-      value: "LYON (intramuros)",
-      onSelect: () => void this.run(),
-    });
-    const swap = button("⇄", "swap", () => this.swap());
-    swap.title = "Inverser";
     this.daySortSelect = select(
       [
         ["departure", "Par heure de départ"],
@@ -75,9 +69,7 @@ export class CalendarView implements View {
     this.daySortSelect.classList.add("sel-sm");
 
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
-      swap,
-      field("Arrivée", this.toPicker.element),
+      ...this.pair.nodes,
       button("Voir le calendrier", "btn-primary", () => void this.run()),
     ]);
     this.element = el("section", { class: "panel" }, [
@@ -95,35 +87,23 @@ export class CalendarView implements View {
 
   /** Pre-fill from the command palette. */
   preset(origin: string, destination?: string): void {
-    this.fromPicker.set(origin);
-    if (destination) this.toPicker.set(destination);
+    this.pair.set(origin, destination);
     void this.run();
   }
 
   /** Ce qui définit la recherche affichée : le trajet. */
   state(): Record<string, string> {
-    return { from: this.fromPicker.value ?? "", to: this.toPicker.value ?? "" };
+    return { from: this.pair.fromValue ?? "", to: this.pair.toValue ?? "" };
   }
 
   restore(params: Record<string, string>): void {
-    if (params.from) this.fromPicker.set(params.from);
-    if (params.to) this.toPicker.set(params.to);
+    this.pair.set(params.from, params.to);
     clear(this.grid); // vide la grille : `activate` relancera la recherche
   }
 
-  private swap(): void {
-    const a = this.fromPicker.value;
-    const b = this.toPicker.value;
-    this.fromPicker.clear();
-    this.toPicker.clear();
-    if (b) this.fromPicker.set(b);
-    if (a) this.toPicker.set(a);
-    void this.run();
-  }
-
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    const to = this.toPicker.value;
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
     clear(this.detail);
     if (!from || !to) {
       this.latest.cancel();
@@ -162,7 +142,7 @@ export class CalendarView implements View {
 
   /** Vrai si l'utilisateur n'a pas changé d'O/D pendant le chargement des places. */
   private stillShowing(from: string, to: string): boolean {
-    return this.fromPicker.value === from && this.toPicker.value === to;
+    return this.pair.fromValue === from && this.pair.toValue === to;
   }
 
   /**

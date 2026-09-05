@@ -7,7 +7,7 @@ import { addDays, frDateLong, iso, parseISO, today } from "@/lib/dates";
 import { Latest } from "@/lib/latest";
 import { prettyStation } from "@/lib/text";
 import { rememberedSelect } from "../components/options";
-import { StationPicker } from "../components/StationPicker";
+import { StationPair } from "../components/StationPair";
 import { DATASET_WINDOW, empty, errorState, hint, skeleton } from "../components/states";
 import { axisBadge, legReserveLink, nextDayChip, reserveButton } from "../components/trains";
 import { button, clear, el, field } from "../dom";
@@ -26,8 +26,7 @@ export class ConnectionsView implements View {
   readonly element: HTMLElement;
   onStateChange?: () => void;
 
-  private readonly fromPicker: StationPicker;
-  private readonly toPicker: StationPicker;
+  private readonly pair: StationPair;
   private readonly dateInput: HTMLInputElement;
   private readonly transferSelect: HTMLSelectElement;
   private readonly legsSelect: HTMLSelectElement;
@@ -41,18 +40,13 @@ export class ConnectionsView implements View {
     private readonly repo: TgvmaxRepository,
     stations: StationRepository,
   ) {
-    this.fromPicker = new StationPicker(stations, {
-      placeholder: "ex. Paris",
-      value: "PARIS (intramuros)",
-      onSelect: () => void this.run(),
+    this.pair = new StationPair(stations, {
+      fromPlaceholder: "ex. Paris",
+      toPlaceholder: "ex. Marseille",
+      fromValue: "PARIS (intramuros)",
+      toValue: "MARSEILLE ST CHARLES",
+      onChange: () => void this.run(),
     });
-    this.toPicker = new StationPicker(stations, {
-      placeholder: "ex. Marseille",
-      value: "MARSEILLE ST CHARLES",
-      onSelect: () => void this.run(),
-    });
-    const swap = button("⇄", "swap", () => this.swap());
-    swap.title = "Inverser";
     this.dateInput = el("input", {
       class: "date-input",
       type: "date",
@@ -83,9 +77,7 @@ export class ConnectionsView implements View {
     );
 
     const controls = el("div", { class: "controls" }, [
-      field("Départ", this.fromPicker.element),
-      swap,
-      field("Arrivée", this.toPicker.element),
+      ...this.pair.nodes,
       field("Date", this.dateInput),
       field("Correspondance", this.transferSelect),
       field("Jusqu'à", this.legsSelect),
@@ -107,40 +99,28 @@ export class ConnectionsView implements View {
 
   /** Pre-fill from the command palette. */
   preset(origin: string, destination?: string): void {
-    this.fromPicker.set(origin);
-    if (destination) this.toPicker.set(destination);
+    this.pair.set(origin, destination);
     void this.run();
   }
 
   /** Le trajet et le jour ; les seuils de correspondance restent des réglages. */
   state(): Record<string, string> {
     return {
-      from: this.fromPicker.value ?? "",
-      to: this.toPicker.value ?? "",
+      from: this.pair.fromValue ?? "",
+      to: this.pair.toValue ?? "",
       date: this.dateInput.value,
     };
   }
 
   restore(params: Record<string, string>): void {
-    if (params.from) this.fromPicker.set(params.from);
-    if (params.to) this.toPicker.set(params.to);
+    this.pair.set(params.from, params.to);
     if (params.date) this.dateInput.value = params.date;
     this.loaded = false; // `activate` relancera la recherche
   }
 
-  private swap(): void {
-    const a = this.fromPicker.value;
-    const b = this.toPicker.value;
-    this.fromPicker.clear();
-    this.toPicker.clear();
-    if (b) this.fromPicker.set(b);
-    if (a) this.toPicker.set(a);
-    void this.run();
-  }
-
   private async run(): Promise<void> {
-    const from = this.fromPicker.value;
-    const to = this.toPicker.value;
+    const from = this.pair.fromValue;
+    const to = this.pair.toValue;
     const date = this.dateInput.value;
     if (!from || !to || from === to || !date) {
       this.latest.cancel();
