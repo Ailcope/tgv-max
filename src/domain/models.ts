@@ -67,3 +67,59 @@ export interface RangeOrigin {
   trains: number;
   days: number;
 }
+
+/* ---- Voyages mixtes TGV MAX + trains régionaux ---- */
+
+/** What kind of train a leg is, for pricing and display. */
+export type LegCategory = "tgv" | "ter" | "other";
+
+/** One public-transport leg of a mixed journey. */
+export interface MixedLeg {
+  category: LegCategory;
+  /** Commercial mode as advertised by SNCF, e.g. `"TER"`, `"TGV INOUI"`. */
+  mode: string;
+  /** Train number when the API exposes one. */
+  trainNo: string | null;
+  origin: string;
+  destination: string;
+  /** `"HH:MM"`. */
+  departure: string;
+  /** `"HH:MM"`. */
+  arrival: string;
+  minutes: number;
+  /**
+   * Fare for this leg in cents, or `null` when the API returned no fare for it.
+   * Ignored when {@link MixedLeg.maxSeat} is set — a MAX seat costs 0 €.
+   */
+  priceCents: number | null;
+  /** This leg is a TGV/Intercités with a free MAX seat left on that date. */
+  maxSeat: boolean;
+}
+
+/** A door-to-door journey mixing free MAX seats and paid regional trains. */
+export interface MixedJourney {
+  /** Stable key for rendering (position in the API response). */
+  id: string;
+  /** `"YYYY-MM-DD"` of the first departure. */
+  date: string;
+  /** `"HH:MM"`. */
+  departure: string;
+  /** `"HH:MM"`. */
+  arrival: string;
+  arrivesNextDay: boolean;
+  /** Door-to-door, minutes. */
+  totalMinutes: number;
+  legs: MixedLeg[];
+  transfers: number;
+  /** Walking/transfer minutes inside and between stations. */
+  walkMinutes: number;
+  /**
+   * What the traveller actually pays: the paid legs only, MAX seats excluded.
+   * `null` when at least one paid leg has no known fare.
+   */
+  paidCents: number | null;
+  /** Paid legs whose fare the API could not compute. */
+  unpricedLegs: number;
+  /** Legs covered by a free MAX seat. */
+  maxLegs: number;
+}

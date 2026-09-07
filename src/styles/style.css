@@ -1225,3 +1225,131 @@ a {
     margin-left: 0;
   }
 }
+
+/* ---- Mode « TER + MAX » ---- */
+.keybox {
+  margin-bottom: 12px;
+}
+.keybox:empty {
+  display: none;
+}
+.keybox-form,
+.keybox-ok {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--pink);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.keybox-ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--muted);
+  border-left-color: var(--ok);
+}
+.keybox-why {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.keybox-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.keybox-input {
+  flex: 1 1 280px;
+  min-width: 200px;
+}
+.keybox-link {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--violet);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.budget-input {
+  max-width: 130px;
+}
+.f-chk {
+  flex: 0 1 150px;
+}
+.chk-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 42px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.chk {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--violet);
+  cursor: pointer;
+}
+
+/* Prix : le total payable, et le badge par trajet. */
+.price {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+  background: var(--violet-l);
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.price-free {
+  color: #fff;
+  background: var(--ok);
+}
+.price-unknown {
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px dashed var(--line);
+  font-weight: 600;
+}
+.rt-leg .price {
+  margin-left: auto;
+}
+
+/* Étiquette de mode (TER, TGV INOUI…), colorée par famille. */
+.mode {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: var(--muted);
+  padding: 3px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.mode-ter {
+  background: #0f7b8a;
+}
+.mode-tgv {
+  background: var(--pink);
+}
+.leg-ter {
+  border-left: 3px solid #0f7b8a;
+}
+.leg-tgv {
+  border-left: 3px solid var(--pink);
+}
+
+@media (max-width: 620px) {
+  .budget-input {
+    max-width: none;
+  }
+  .rt-leg .price {
+    margin-left: 0;
+  }
+}

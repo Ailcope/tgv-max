@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dateOnly, frDate, iso, isWeekend, nextSaturday, parseISO } from "@/lib/dates";
+import {
+  addDays,
+  compact,
+  dateOnly,
+  frDate,
+  iso,
+  isWeekend,
+  nextSaturday,
+  parseCompact,
+  parseISO,
+} from "@/lib/dates";
 
 describe("dates", () => {
   it("formats and parses ISO dates in local time", () => {
@@ -27,5 +37,20 @@ describe("dates", () => {
     expect(isWeekend("2026-07-04")).toBe(true); // Saturday
     expect(isWeekend("2026-07-05")).toBe(true); // Sunday
     expect(isWeekend("2026-07-06")).toBe(false); // Monday
+  });
+});
+
+describe("compact date-times (Navitia)", () => {
+  it("parses the compact form into a date and a time", () => {
+    expect(parseCompact("20260908T071500")).toEqual({ date: "2026-09-08", time: "07:15" });
+  });
+
+  it("builds the compact form back", () => {
+    expect(compact("2026-09-08", "07:15")).toBe("20260908T071500");
+  });
+
+  it("round-trips", () => {
+    const { date, time } = parseCompact("20261231T235900");
+    expect(compact(date, time)).toBe("20261231T235900");
   });
 });

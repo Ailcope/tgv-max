@@ -81,6 +81,22 @@ export function frDateTime(isoInstant: string): string {
   }
 }
 
+/**
+ * Compact ISO-8601 basic form `"YYYYMMDDTHHMMSS"` (used by the SNCF Navitia
+ * API) → the `"YYYY-MM-DD"` / `"HH:MM"` pair used everywhere else here.
+ */
+export function parseCompact(s: string): { date: string; time: string } {
+  return {
+    date: `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`,
+    time: `${s.slice(9, 11)}:${s.slice(11, 13)}`,
+  };
+}
+
+/** `"YYYY-MM-DD"` + `"HH:MM"` → compact `"YYYYMMDDTHHMMSS"`. */
+export function compact(date: string, time: string): string {
+  return `${date.replace(/-/g, "")}T${time.replace(":", "")}00`;
+}
+
 export function isWeekend(s: string): boolean {
   const g = parseISO(s).getDay();
   return g === 0 || g === 6;

@@ -23,6 +23,7 @@ est la **flexibilité** (voyages illimités).
 | 🔀 **Correspondances** | Quand le direct est complet : itinéraires en **2 à 4 trains** (jusqu'à 3 correspondances), temps de correspondance réglable, **trains de nuit** 🌙 signalés (arrivée J+1). |
 | 🗺️ **Carte**        | Destinations posées sur le **vrai réseau ferré SNCF coloré par vitesse** : les **LGV** ressortent en rose, les lignes classiques en bleu.                                                                              |
 | 🔁 **Aller-retour** | Allers-retours dans la journée (temps min. sur place) ou week-ends, places MAX dans les deux sens, filtres horaires, mini-carte de l'axe.                                                                              |
+| 🚈 **TER + MAX**    | Trajets porte-à-porte mêlant **places MAX à 0 €** et **trains régionaux payants**, sous un **budget maximum**. Le plafond ne compte que ce que vous payez vraiment : les tronçons couverts par une place MAX sont gratuits. Demande une clé API SNCF (voir plus bas). |
 
 Recherche rapide au clavier : **⌘K / Ctrl+K** (gare de départ, puis destination optionnelle).
 
@@ -69,18 +70,23 @@ src/
     time.ts               durées (gère le passage de minuit)
     availability.ts       niveaux de heatmap + agrégation par destination
     roundtrip.ts          algos aller-retour jour / week-end
+    regional.ts           budget des voyages mixtes MAX + TER (prix payable, tri)
   data/                   accès aux données
     SncfApiClient.ts      client typé OpenDataSoft (fetch injecté, pagination)
     query.ts              construction des clauses ODSQL (pur)
     TgvmaxRepository.ts   requêtes métier -> modèles du domaine
     StationRepository.ts  catalogue des gares (recherche, lookup)
     railNetwork.ts        chargement du GeoJSON réseau ferré (lazy, caché)
+    NavitiaApiClient.ts   client typé de l'API SNCF « Navitia » (itinéraires TER + tarifs)
+    NavitiaKeyStore.ts    où vit le token SNCF (build-time ou localStorage)
+    regionalMapper.ts     Navitia -> domaine (pur : modes, tarifs, repérage des places MAX)
+    RegionalRepository.ts croisement Navitia x tgvmax, filtrage par budget
   ui/                     présentation
     dom.ts                helpers DOM typés (el/clear/field/select)
     components/           StationPicker, trains, états, drapeaux
     map/                  MapKit (Leaflet) + railLayer (couleur par vitesse)
-    views/                CalendarView, DestinationsView, MapView, RoundtripView
-  lib/                    utilitaires transverses (dates, format, texte)
+    views/                CalendarView, DestinationsView, MapView, RoundtripView, RegionalView
+  lib/                    utilitaires transverses (dates, format, texte, monnaie)
   assets/data/            stations.json (généré)
 public/railnet.geojson    réseau ferré simplifié (généré)
 tests/                    tests unitaires Vitest (miroir de src/)
@@ -110,6 +116,43 @@ npm test
 - `data/` : construction d'URL + pagination du client (avec un `fetch` factice injecté),
   builders ODSQL, recherche de gares.
 
+## Mode « TER + MAX » (trains régionaux)
+
+L'onglet 🚈 cherche des trajets qui **mélangent les deux réseaux** : un TER pour rejoindre
+la gare TGV, puis un TGV où il reste une place MAX. Comme la place MAX est gratuite, le
+**budget maximum** que vous fixez ne s'applique qu'au reste — en pratique, aux TER.
+
+Deux sources sont croisées :
+
+| Source | Ce qu'elle apporte | Clé ? |
+| ------ | ------------------ | ----- |
+| [API SNCF « Navitia »](https://numerique.sncf.com/startup/api/) | itinéraires TER/Intercités/TGV et **tarifs** | oui, gratuite |
+| jeu de données **tgvmax** | quels trains ont encore une **place MAX** | non |
+
+Le rapprochement se fait sur le **numéro de train** : un tronçon grande ligne dont le
+numéro apparaît dans l'export tgvmax du jour passe à 0 €, les autres consomment le budget.
+
+### Fournir la clé API
+
+Un token développeur gratuit s'obtient sur
+[numerique.sncf.com](https://numerique.sncf.com/startup/api/token-developpeur/). Deux façons
+de le fournir :
+
+- **dans l'app** : à coller dans l'encart de l'onglet 🚈. Il reste dans le `localStorage`
+  du navigateur et n'est envoyé qu'à l'API SNCF ;
+- **au build**, pour un déploiement perso : `VITE_SNCF_API_KEY=<token>` dans un `.env.local`.
+  L'encart disparaît alors. ⚠️ Une variable `VITE_*` finit **dans le bundle public** : ne
+  faites ça que pour un déploiement privé.
+
+### Limites connues
+
+- Les tarifs viennent de l'API : quand elle n'en renvoie pas pour un tronçon, le total est
+  marqué **« prix partiel »** plutôt que sous-estimé en silence. Une case permet de masquer
+  ces itinéraires.
+- Un tarif couvrant plusieurs tronçons est **réparti à parts égales** entre eux pour
+  l'affichage ; le total, lui, reste exact.
+- Les places MAX viennent de l'export quotidien : un 0 € affiché peut déjà être parti.
+
 ## Régénérer les données
 
 Deux jeux de données statiques sont pré-calculés par des scripts Python (à relancer si la
@@ -127,4 +170,6 @@ npm run data:railnet    # -> public/railnet.geojson
   **fréquentation** via [frequentation-gares](https://ressources.data.sncf.com/explore/dataset/frequentation-gares/) (jointure UIC).
 - **Réseau ferré & vitesses** : [vitesse-maximale-nominale-sur-ligne](https://ressources.data.sncf.com/explore/dataset/vitesse-maximale-nominale-sur-ligne/)
   (géométrie simplifiée Douglas-Peucker). Calque optionnel [OpenRailwayMap](https://www.openrailwaymap.org/).
+- **Trains régionaux & tarifs** : [API SNCF (Navitia)](https://numerique.sncf.com/startup/api/),
+  clé développeur gratuite requise — voir « Mode TER + MAX ».
 - Projet **non officiel**, sans lien avec la SNCF.
