@@ -1,0 +1,25 @@
+{
+  "watch": [
+    { "name": "Reims -> Sedan", "from": "REIMS", "to": "SEDAN" },
+    { "name": "Sedan -> Reims", "from": "SEDAN", "to": "REIMS" }
+  ],
+  "ntfy": [
+    {
+      "name": "ntfy.sh",
+      "url": "https://ntfy.sh/CHANGEZ-MOI",
+      "max_bytes": 3800
+    }
+  ],
+  "mail": {
+    "relay_url": "https://exemple.tld:8443/send",
+    "token": "REMPLACER",
+    "to": "vous@exemple.tld"
+  },
+  "healthcheck_url": "http://127.0.0.1:8084/ping/REMPLACER",
+  "healthcheck_host": "hc.exemple.tld",
+  "freeplaces": {
+    "relay_url": "http://192.168.1.211:8099",
+    "threshold": 5,
+    "horizon_days": 14
+  }
+}
