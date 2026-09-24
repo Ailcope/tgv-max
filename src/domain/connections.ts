@@ -96,8 +96,10 @@ export function planJourneys(
   const journeys: Journey[] = [];
   const stack: Node[] = [];
 
-  // Seed: every MAX train leaving the origin.
-  for (const t of byOrigin.get(hub(from)) ?? []) {
+  // Seed: every MAX train leaving the origin, pushing in reverse order so LIFO pop explores earliest first.
+  const originTrains = byOrigin.get(hub(from)) ?? [];
+  for (let i = originTrains.length - 1; i >= 0; i -= 1) {
+    const t = originTrains[i];
     const depAbs = hhmmToMinutes(t.departure);
     stack.push({
       legs: [t],
@@ -121,7 +123,9 @@ export function planJourneys(
     if (node.arrivalAbs >= 24 * 60) continue; // arrived next day: no same-date train follows
 
     const earliestNext = node.arrivalAbs + minTransfer;
-    for (const t of byOrigin.get(here) ?? []) {
+    const nextCandidates = byOrigin.get(here) ?? [];
+    for (let i = nextCandidates.length - 1; i >= 0; i -= 1) {
+      const t = nextCandidates[i];
       const depAbs = hhmmToMinutes(t.departure);
       // Changer de gare au sein de l'échangeur se fait à pied, pas d'un quai à l'autre.
       if (depAbs < earliestNext + (t.origin === last.destination ? 0 : walk)) continue;
@@ -226,7 +230,9 @@ export function reachableFrom(
   const seen = new Map<string, number>(); // gare → meilleure arrivée déjà explorée
   const stack: Node[] = [];
 
-  for (const t of byOrigin.get(hub(from)) ?? []) {
+  const originTrains = byOrigin.get(hub(from)) ?? [];
+  for (let i = originTrains.length - 1; i >= 0; i -= 1) {
+    const t = originTrains[i];
     const depAbs = hhmmToMinutes(t.departure);
     stack.push({
       legs: [t],
@@ -267,7 +273,9 @@ export function reachableFrom(
     seen.set(here, node.arrivalAbs);
 
     const earliestNext = node.arrivalAbs + minTransfer;
-    for (const t of byOrigin.get(here) ?? []) {
+    const nextCandidates = byOrigin.get(here) ?? [];
+    for (let i = nextCandidates.length - 1; i >= 0; i -= 1) {
+      const t = nextCandidates[i];
       const depAbs = hhmmToMinutes(t.departure);
       if (depAbs < earliestNext + (t.origin === last.destination ? 0 : walk)) continue;
       if (node.visited.has(hub(t.destination))) continue;
