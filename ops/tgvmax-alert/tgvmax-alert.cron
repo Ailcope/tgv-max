@@ -1,0 +1,6 @@
+# Bulletin quotidien des places MAX — l'export SNCF tombe vers 06:25 CEST, on passe apres.
+# A deposer dans /etc/cron.d/tgvmax-alert (root:root, mode 644).
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+15 7 * * * root /usr/bin/python3 /opt/tgvmax-alert/watch.py >> /var/log/tgvmax-alert.log 2>&1
