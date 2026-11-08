@@ -25,5 +25,6 @@ services:
       - sh
       - -c
       - rm -f /ms-playwright/firefox-*/firefox/lock /ms-playwright/firefox-*/firefox/.parentlock; exec node relay.js
-    mem_limit: 768m
-    pids_limit: 256
+    # Mesure du 08/11/2026 : 580 Mo et 185 processus avec une page ouverte.
+    mem_limit: 1g
+    pids_limit: 512
