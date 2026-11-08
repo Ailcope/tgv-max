@@ -19,13 +19,15 @@
   "ntfy": [
     {
       "name": "ntfy.sh",
-      "url": "https://ntfy.sh/tgvmax-choisissez-un-nom-imprevisible"
+      "url": "https://ntfy.sh/tgvmax-choisissez-un-nom-imprevisible",
+      "max_bytes": 3800
     }
   ],
 
   "freeplaces": {
     "relay_url": "http://127.0.0.1:8099",
-    "threshold": 5
+    "threshold": 5,
+    "horizon_days": 14
   },
 
   "mail": {
@@ -34,5 +36,6 @@
     "to": "moi@exemple.fr"
   },
 
-  "healthcheck_url": "https://hc.exemple.fr/ping/00000000-0000-0000-0000-000000000000"
+  "healthcheck_url": "https://hc.exemple.fr/ping/00000000-0000-0000-0000-000000000000",
+  "healthcheck_host": "hc.exemple.fr"
 }

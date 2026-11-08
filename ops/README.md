@@ -2,8 +2,16 @@
 
 Le site répond à la question « où puis-je aller ? ». Il ne répond pas à
 « préviens-moi quand une place s'ouvre sur mon trajet du dimanche soir ».
-C'est ce que fait `watch.py` : un passage quotidien sur le dataset, et une
-notification **uniquement quand quelque chose change**.
+C'est ce que fait `watch.py` : un passage quotidien sur le dataset, et un
+**bulletin** chaque matin. Il donne l'état complet de la fenêtre glissante
+(environ 30 jours) pour chaque trajet suivi, et marque dedans ce qui a bougé
+depuis la veille :
+- « + » pour une place qui s'ouvre ;
+- une place qui disparaît ;
+- « ⚠ » pour un train qui passe sous le seuil de places restantes.
+
+Le bulletin complet part par mail (en HTML). La notification ntfy en est une
+version compacte, coupée avant la limite de taille de ntfy.
 
 Ces scripts vivent à côté du site, pas dedans : ils tournent sur une machine à
 soi (cron, conteneur, Raspberry Pi…) et n'ont aucune dépendance vers le front.
@@ -34,15 +42,28 @@ Puis en cron :
 15 7 * * * root /usr/bin/python3 /opt/tgvmax-alert/watch.py >> /var/log/tgvmax-alert.log 2>&1
 ```
 
+## En production (pve1, CT 206)
+
+1. Le code est le clone `/opt/tgvmax/src` (branche `deploy/ailcope`), le même
+   qui sert à construire le site.
+2. `/opt/tgvmax-alert` est un lien vers `/opt/tgvmax/src/ops` : le cron et le
+   journal gardent ce chemin.
+3. `config.json` (600) et `state.json` sont dans `ops/`, ignorés par git et
+   jamais touchés par un `git pull`.
+4. Mettre à jour : `cd /opt/tgvmax/src && git pull --ff-only`. Le site n'est
+   pas reconstruit pour autant : nginx sert `dist/`, ignoré par git.
+5. Ne vide pas `state.json` : tout serait annoncé comme nouveau au passage
+   suivant, et l'historique serait perdu.
+
 ## Configuration
 
 | Clé | Rôle |
 | --- | --- |
 | `watch[]` | Les trajets suivis. `from`/`to` sont les libellés **exacts** du dataset (`"PARIS (intramuros)"`), `weekdays` suit `date.weekday()` (0 = lundi, 6 = dimanche). `after`/`before` filtrent l'heure de départ. |
-| `ntfy[]` | Une cible ou une liste. Chacune accepte `user`/`password` (Basic) ou `token` (Bearer, pour ntfy.sh). Une cible en panne ne prive pas les autres. |
-| `freeplaces` | Optionnel. `relay_url` pointe le relais « places libres » (voir `ops/freeplaces-relay/`), `threshold` est le nombre de places à partir duquel un train suivi est signalé (5 par défaut). Sans cette clé, seules les ouvertures et les disparitions sont surveillées. |
+| `ntfy[]` | Une cible ou une liste. Chacune accepte `user`/`password` (Basic) ou `token` (Bearer, pour ntfy.sh). `max_bytes` (3800 par défaut) coupe le corps avant la limite de ntfy. Une cible en panne ne prive pas les autres. |
+| `freeplaces` | Optionnel. `relay_url` pointe le relais « places libres » (voir `ops/freeplaces-relay/`). `threshold` est le nombre de places à partir duquel un train suivi est signalé (5 par défaut). `horizon_days` limite les appels au relais aux N prochains jours (14 par défaut). Sans cette clé, seules les ouvertures et les disparitions sont surveillées. |
 | `mail` | Optionnel. Poste le message en JSON sur un relais HTTP qui le remet à un serveur mail. Utile quand la machine n'a aucune sortie SMTP, ce qui est le cas derrière la plupart des box (port 25 bloqué). |
-| `healthcheck_url` | Optionnel. Ping de fin de passage (healthchecks.io ou équivalent) ; `/fail` est envoyé si le dataset est injoignable. |
+| `healthcheck_url` | Optionnel. Ping de fin de passage (healthchecks.io ou équivalent) ; `/fail` est envoyé si le dataset est injoignable. `healthcheck_host` force l'en-tête `Host` quand le ping passe par l'IP locale du serveur. |
 
 `state.json` est écrit à côté du script : c'est lui qui permet de ne notifier
 que les différences. Le supprimer provoque une notification de tout ce qui est
@@ -50,8 +71,8 @@ ouvert au prochain passage.
 
 ## Ce que le script évite
 
-- **Répéter la même liste chaque matin** : seules les places apparues ou
-  disparues sont annoncées.
+- **Noyer ce qui a bougé dans la liste du jour** : le bulletin est complet, mais
+  les places apparues, disparues ou sous le seuil y sont marquées.
 - **Confondre « place perdue » et « date sortie de la fenêtre »** : les dates
   passées disparaissent naturellement du dataset glissant, elles ne sont pas
   comptées comme des places perdues.

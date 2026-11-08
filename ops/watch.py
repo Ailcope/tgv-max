@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Alerte sur les places MAX JEUNE des trajets suivis (open data SNCF « tgvmax »).
+"""Bulletin quotidien des places MAX JEUNE sur les trajets suivis (open data SNCF « tgvmax »).
 
 Le dataset n'est exporte qu'une fois par jour, tot le matin : ce script est donc
-prevu pour un unique passage quotidien. Il ne notifie que les *changements* par
-rapport au dernier passage, pour ne pas repeter la meme liste chaque matin.
-
-Trois changements sont surveilles : une place qui s'ouvre, une place qui
-disparait, et un train suivi qui passe sous un seuil de places restantes. Ce
-dernier demande un relais vers le service des places libres ; sans lui, les
-deux premiers fonctionnent tels quels.
+prevu pour un unique passage quotidien. Il envoie a chaque passage l'etat
+complet de la fenetre glissante (~30 jours) pour chaque trajet suivi, et marque
+dedans ce qui a bouge depuis la veille : une place qui s'ouvre (« + »), une
+place qui disparait, et un train qui passe sous un seuil de places restantes
+(« ⚠ »). Ce dernier demande un relais vers le service des places libres ; sans
+lui, le reste fonctionne tel quel.
 """
 
 from __future__ import annotations
@@ -33,6 +32,10 @@ JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"
 # Deux mois de releves : assez pour dire si un train est habituellement libre,
 # assez peu pour que l'etat reste un petit fichier.
 HISTORY_MAX = 60
+
+# ntfy refuse un corps trop long. Le bulletin complet part par mail ; la notif
+# est coupee juste avant la limite, avec de la marge pour la ligne de coupe.
+NTFY_MAX = 3800
 
 
 def get_json(url: str) -> dict:
@@ -134,9 +137,17 @@ def dataset_timestamp() -> str | None:
 
 
 def matches(train: dict, rule: dict) -> bool:
-    day = dt.date.fromisoformat(train["date"][:10])
-    if day.weekday() not in rule["weekdays"]:
-        return False
+    """Une regle sans `weekdays` ni `after`/`before` prend tout l'O/D.
+
+    C'est le cas nominal du bulletin : on veut voir la semaine entiere, tous
+    les trains, dans les deux sens. Les filtres restent disponibles pour
+    reduire un trajet a un creneau precis.
+    """
+    weekdays = rule.get("weekdays")
+    if weekdays is not None:
+        day = dt.date.fromisoformat(train["date"][:10])
+        if day.weekday() not in weekdays:
+            return False
     depart = train["heure_depart"]
     if rule.get("after") and depart < rule["after"]:
         return False
@@ -151,13 +162,18 @@ def key(rule: dict, train: dict) -> str:
     )
 
 
-def label(rule: dict, train: dict) -> str:
+def short_label(train: dict) -> str:
+    """La ligne d'un train sous l'en-tete de son trajet, qui porte deja l'O/D."""
     day = dt.date.fromisoformat(train["date"][:10])
     return (
         f"{JOURS[day.weekday()]} {day.strftime('%d/%m')} · "
-        f"{train['heure_depart']} → {train['heure_arrivee']} "
-        f"(n°{train['train_no']}) {rule['from']} → {rule['to']}"
+        f"{train['heure_depart']} → {train['heure_arrivee']} (n°{train['train_no']})"
     )
+
+
+def label(rule: dict, train: dict) -> str:
+    """La ligne autonome, gardee pour l'etat : une disparition n'a plus d'en-tete."""
+    return f"{short_label(train)} {rule['from']} → {rule['to']}"
 
 
 def rfc2047(value: str) -> str:
@@ -172,6 +188,27 @@ def ntfy_targets(cfg: dict) -> list[dict]:
     raw = cfg.get("ntfy") or []
     targets = [raw] if isinstance(raw, dict) else list(raw)
     return [t for t in targets if t.get("url")]
+
+
+def clip(body: str, limit: int = NTFY_MAX) -> str:
+    """Coupe a la ligne, et dit combien il en manque.
+
+    Trente jours sur deux sens depassent vite la limite de ntfy. Une liste
+    tronquee sans le dire ferait croire qu'il n'y a rien de plus.
+    """
+    if len(body.encode("utf-8")) <= limit:
+        return body
+    lines = body.split("\n")
+    kept: list[str] = []
+    size = 0
+    for line in lines:
+        chunk = len(line.encode("utf-8")) + 1
+        if size + chunk > limit - 80:
+            break
+        kept.append(line)
+        size += chunk
+    kept.append(f"… {len(lines) - len(kept)} ligne(s) de plus dans le mail.")
+    return "\n".join(kept)
 
 
 def notify_ntfy_one(target: dict, title: str, body: str, priority: str, tags: str) -> None:
@@ -203,12 +240,12 @@ def notify_ntfy(cfg: dict, title: str, body: str, priority: str, tags: str) -> N
     for target in ntfy_targets(cfg):
         name = target.get("name") or target["url"]
         try:
-            notify_ntfy_one(target, title, body, priority, tags)
+            notify_ntfy_one(target, title, clip(body, int(target.get("max_bytes") or NTFY_MAX)), priority, tags)
         except Exception as exc:
             print(f"ntfy KO [{name}]: {exc}", file=sys.stderr)
 
 
-def notify_mail(cfg: dict, subject: str, body: str) -> None:
+def notify_mail(cfg: dict, subject: str, body: str, html: str = "") -> None:
     """La machine n'a aucune sortie SMTP (port 25 bloque par le FAI) : on passe
     par un relais HTTP, qui remet le message a un Postfix local."""
     mail = cfg.get("mail") or {}
@@ -216,6 +253,10 @@ def notify_mail(cfg: dict, subject: str, body: str) -> None:
     if not url:
         return
     payload = {"subject": subject, "body": body}
+    if html:
+        # Le relais compose alors un multipart/alternative : le texte reste
+        # la version de repli, le HTML est ce que le client affiche.
+        payload["html"] = html
     if mail.get("to"):
         payload["to"] = mail["to"]
     req = urllib.request.Request(
@@ -257,28 +298,35 @@ def tightening(
 
     Rend deux dictionnaires : l'etat courant, a reecrire tel quel, et les seuls
     trains qui viennent de passer sous le seuil. La distinction compte : sans
-    elle, un train a trois places serait signale tous les matins jusqu'a ce
-    qu'il soit plein, et l'alerte perdrait tout son sens.
+    elle, le bulletin marquerait « en tension » les memes trains chaque matin,
+    et la marque perdrait tout son sens.
 
-    Sans relais configure, la fonction ne fait rien : le reste du script marche
-    exactement comme avant.
+    Sans relais configure, la fonction ne fait rien : le bulletin sort quand
+    meme, sans les nombres de places.
     """
     settings = cfg.get("freeplaces") or {}
     relay = settings.get("relay_url")
     if not relay or not matched:
         return dict(previous_seats), {}
     threshold = int(settings.get("threshold", 5))
+    # Interroger le relais sur trente jours fait une requete par jour et par
+    # sens. Au-dela de l'horizon utile, le nombre de places ne dit plus rien
+    # d'actionnable : on s'arrete la plutot que d'allonger le passage.
+    horizon = int(settings.get("horizon_days", 14))
+    limit_day = (dt.date.today() + dt.timedelta(days=horizon)).isoformat()
 
     pairs: dict[tuple[str, str], tuple[str, str] | None] = {}
     days: dict[tuple[str, str, str], dict[str, int]] = {}
     seats: dict[str, int] = {}
     tight: dict[str, int] = {}
     for entry_key, rule, train in matched:
+        if train["date"][:10] > limit_day:
+            continue
         od = (rule["from"], rule["to"])
         # Un echec est memorise comme un resultat vide : sur une panne du
         # relais, on ne le rappelle pas une fois par train suivi. Le relais est
-        # un confort, son absence ne prive pas des alertes d'ouverture, qui ne
-        # dependent que du dataset.
+        # un confort, son absence ne prive pas du bulletin, qui ne depend que
+        # du dataset.
         if od not in pairs:
             try:
                 pairs[od] = code_pair(*od)
@@ -300,7 +348,7 @@ def tightening(
             continue
         seats[entry_key] = count
         # On ne signale que la traversee du seuil, vers le bas. Un train deja
-        # signale hier reste sous le seuil aujourd'hui sans etre une nouvelle.
+        # marque hier reste sous le seuil aujourd'hui sans etre une nouvelle.
         if 0 < count <= threshold and previous_seats.get(entry_key, threshold + 1) > threshold:
             tight[entry_key] = count
     return seats, tight
@@ -384,6 +432,335 @@ def show_history() -> int:
     return 0
 
 
+def render(
+    cfg: dict,
+    matched: list[tuple[str, dict, dict]],
+    previous: dict[str, str],
+    gone: dict[str, str],
+    seats: dict[str, int],
+    tight: dict[str, int],
+    history: dict[str, list[dict]],
+) -> str:
+    """Le bulletin : l'etat complet, un bloc par trajet, du plus proche au plus loin."""
+    lines: list[str] = []
+    for rule in cfg["watch"]:
+        entries = sorted(
+            (e for e in matched if e[1]["name"] == rule["name"]),
+            key=lambda e: (e[2]["date"][:10], e[2]["heure_depart"]),
+        )
+        lines.append(f"{rule['from']} → {rule['to']} · {len(entries)} place(s) MAX")
+        if not entries:
+            lines.append("  (aucune)")
+        for entry_key, _rule, train in entries:
+            # Un « + » retrouve la nouveaute du jour dans une liste longue.
+            row = f"  {'+' if entry_key not in previous else ' '} {short_label(train)}"
+            count = seats.get(entry_key)
+            if count is not None:
+                row += f" · {count} place(s)"
+            if entry_key in tight:
+                row += " ⚠"
+            lines.append(row)
+        lines.append("")
+
+    if gone:
+        lines.append("DISPARUES DEPUIS LE DERNIER PASSAGE :")
+        lines += [f"  - {v}" for v in sorted(gone.values())]
+        lines.append("")
+
+    # Une ouverture ne dit pas si elle est banale ou exceptionnelle sur ce
+    # trajet. L'historique repond a la question sans qu'on ait a la poser.
+    lines.append("HABITUDE DE CES TRAJETS :")
+    lines += [
+        f"  {name} · {trend(history.get(name, []))}"
+        for name in sorted(r["name"] for r in cfg["watch"])
+    ]
+    lines.append("")
+    lines.append(f"Export du dataset : {dataset_timestamp() or 'inconnu'}")
+    lines.append("Reserver : https://www.sncf-connect.com/")
+    return "\n".join(lines)
+
+
+def week_label(day: dt.date, today: dt.date) -> str:
+    """« Cette semaine », « Semaine prochaine », puis la date du lundi.
+
+    Sur trente jours, une liste plate de dates ne dit rien : c'est le decoupage
+    en semaines qui rend le bulletin lisible d'un coup d'oeil.
+    """
+    monday = day - dt.timedelta(days=day.weekday())
+    current = today - dt.timedelta(days=today.weekday())
+    weeks = (monday - current).days // 7
+    if weeks <= 0:
+        return "Cette semaine"
+    if weeks == 1:
+        return "Semaine prochaine"
+    return f"Semaine du {monday.strftime('%d/%m')}"
+
+
+def marks(entry_key: str, previous: dict[str, str], tight: dict[str, int]) -> str:
+    out = "+" if entry_key not in previous else ""
+    if entry_key in tight:
+        out += "⚠"
+    return out
+
+
+def render_compact(
+    cfg: dict,
+    matched: list[tuple[str, dict, dict]],
+    previous: dict[str, str],
+    gone: dict[str, str],
+    tight: dict[str, int],
+) -> str:
+    """Le bulletin tenant dans une notification : un jour par ligne, par semaine.
+
+    Le Markdown de ntfy n'est pas rendu par l'application mobile, et une police
+    proportionnelle casse tout alignement a l'espace : la structure passe donc
+    par l'indentation et les intertitres, pas par des colonnes.
+    """
+    has_mail = bool((cfg.get("mail") or {}).get("relay_url"))
+    today = dt.date.today()
+    lines: list[str] = []
+    for rule in cfg["watch"]:
+        entries = [e for e in matched if e[1]["name"] == rule["name"]]
+        lines.append(f"▌{rule['from']} → {rule['to']} · {len(entries)} place(s)")
+        by_day: dict[str, list[str]] = {}
+        for entry_key, _rule, train in entries:
+            by_day.setdefault(train["date"][:10], []).append(
+                train["heure_depart"] + marks(entry_key, previous, tight)
+            )
+        if not by_day:
+            lines.append("  (aucune)")
+        current_week = None
+        for day in sorted(by_day):
+            when = dt.date.fromisoformat(day)
+            week = week_label(when, today)
+            if week != current_week:
+                lines.append("")
+                lines.append(f"  {week}")
+                current_week = week
+            hours = " · ".join(sorted(by_day[day]))
+            lines.append(f"    {JOURS[when.weekday()][:3]} {when.strftime('%d/%m')} │ {hours}")
+        lines.append("")
+    if gone:
+        lines.append(f"{len(gone)} place(s) disparue(s) depuis hier.")
+    lines.append("+ nouvelle · ⚠ en tension")
+    lines.append("Détail complet par mail." if has_mail else "Détail complet dans le journal.")
+    return "\n".join(lines)
+
+
+# --- Le mail : la version soignee -----------------------------------------
+# Pas de <style> ni de variables CSS : Gmail supprime les secondes et rogne le
+# premier. Tout est en style inline, sur une mise en page en tableaux, seule
+# chose que les clients mail rendent de la meme facon.
+
+INK = "#14161a"
+DIM = "#6b7280"
+LINE = "#e4e6ea"
+CARD = "#ffffff"
+PAGE = "#eef0f3"
+ACCENT = "#0b3f7a"
+NEW_INK = "#0f7b3f"
+NEW_BG = "#e9f6ee"
+TIGHT_INK = "#9a5205"
+TIGHT_BG = "#fdf2e2"
+GONE_INK = "#a01b2b"
+
+FONT = "-apple-system,Roboto,Arial,sans-serif"
+
+
+def esc(value) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def chip(text: str, color: str, bg: str) -> str:
+    return (
+        f"<span style=\"display:inline-block;padding:4px 11px;margin:0 6px 6px 0;"
+        f"border-radius:999px;background:{bg};color:{color};font-size:13px;font-weight:600;"
+        f"white-space:nowrap\">{esc(text)}</span>"
+    )
+
+
+def render_mail_html(
+    cfg: dict,
+    matched: list[tuple[str, dict, dict]],
+    previous: dict[str, str],
+    gone: dict[str, str],
+    seats: dict[str, int],
+    tight: dict[str, int],
+    history: dict[str, list[dict]],
+) -> str:
+    """Le bulletin en HTML, pense pour un client mail : tableaux, styles inline."""
+    total = len(matched)
+    new_count = sum(1 for k, _r, _t in matched if k not in previous)
+    today = dt.date.today()
+    now = dt.datetime.now()
+
+    out: list[str] = []
+    add = out.append
+    add("<!doctype html><html lang='fr'><head><meta charset='utf-8'>")
+    add("<meta name='viewport' content='width=device-width,initial-scale=1'>")
+    add(f"<title>{esc(headline(total, new_count, len(gone), len(tight)))}</title>")
+    add("</head>")
+    add(
+        f"<body style=\"margin:0;padding:0;background:{PAGE};color:{INK};"
+        f"font:15px/1.5 {FONT};-webkit-text-size-adjust:100%\">"
+    )
+    add(
+        f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
+        f"style=\"background:{PAGE};padding:24px 12px;font-family:{FONT}\"><tr><td align='center'>"
+        f"<table role='presentation' width='640' cellpadding='0' cellspacing='0' "
+        f"style=\"width:100%;max-width:640px\">"
+    )
+
+    add(
+        f"<tr><td style=\"background:{ACCENT};border-radius:16px 16px 0 0;padding:26px 26px 22px\">"
+        f"<div style=\"font-size:23px;font-weight:700;color:#fff;letter-spacing:-0.3px\">"
+        f"Places TGV MAX</div>"
+        f"<div style=\"font-size:14px;color:#b9cfe8;padding-top:5px\">"
+        f"Bulletin du {esc(now.strftime('%d/%m/%Y à %H:%M'))}</div>"
+        f"</td></tr>"
+    )
+
+    add(f"<tr><td style=\"background:{CARD};padding:18px 26px 12px;border-bottom:1px solid {LINE}\">")
+    add(chip(f"{total} place(s) ouverte(s)", INK, "#f0f2f5"))
+    if new_count:
+        add(chip(f"+{new_count} nouvelle(s)", NEW_INK, NEW_BG))
+    if gone:
+        add(chip(f"−{len(gone)} disparue(s)", GONE_INK, "#fdecee"))
+    if tight:
+        add(chip(f"{len(tight)} en tension", TIGHT_INK, TIGHT_BG))
+    add("</td></tr>")
+
+    for rule in cfg["watch"]:
+        entries = sorted(
+            (e for e in matched if e[1]["name"] == rule["name"]),
+            key=lambda e: (e[2]["date"][:10], e[2]["heure_depart"]),
+        )
+        add(
+            f"<tr><td style=\"background:{CARD};padding:22px 26px 6px\">"
+            f"<div style=\"font-size:16px;font-weight:700;color:{INK}\">"
+            f"{esc(rule['from'])} &rarr; {esc(rule['to'])}"
+            f"<span style=\"float:right;font-size:13px;font-weight:400;color:{DIM}\">"
+            f"{len(entries)} place(s)</span></div></td></tr>"
+        )
+        if not entries:
+            add(
+                f"<tr><td style=\"background:{CARD};padding:6px 26px 18px;"
+                f"font-size:14px;color:{DIM}\">Aucune place sur la fenêtre.</td></tr>"
+            )
+            continue
+
+        add(f"<tr><td style=\"background:{CARD};padding:8px 26px 20px\">")
+        add(
+            "<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
+            f"style='width:100%;border-collapse:collapse;font-family:{FONT}'>"
+        )
+        current_week = None
+        for entry_key, _rule, train in entries:
+            when = dt.date.fromisoformat(train["date"][:10])
+            week = week_label(when, today)
+            if week != current_week:
+                add(
+                    f"<tr><td colspan='4' style=\"padding:14px 0 6px;font-size:11px;font-weight:600;"
+                    f"letter-spacing:0.09em;text-transform:uppercase;color:{DIM}\">"
+                    f"{esc(week)}</td></tr>"
+                )
+                current_week = week
+            is_new = entry_key not in previous
+            is_tight = entry_key in tight
+            bg = NEW_BG if is_new else (TIGHT_BG if is_tight else CARD)
+            count = seats.get(entry_key)
+            badge = ""
+            if is_new:
+                badge = (
+                    f"<span style=\"display:inline-block;margin-left:7px;padding:1px 6px;"
+                    f"border-radius:4px;background:{NEW_INK};color:#fff;"
+                    f"font-size:10px;font-weight:700;letter-spacing:0.04em\">NOUVEAU</span>"
+                )
+            elif is_tight:
+                badge = (
+                    f"<span style=\"display:inline-block;margin-left:7px;padding:1px 6px;"
+                    f"border-radius:4px;background:{TIGHT_INK};color:#fff;"
+                    f"font-size:10px;font-weight:700;letter-spacing:0.04em\">TENSION</span>"
+                )
+            cell = "border-top:1px solid #e4e6ea;padding:9px 8px 9px 0;font-size:14px"
+            if bg != CARD:
+                cell += f";background:{bg}"
+            add(
+                f"<tr>"
+                f"<td style=\"{cell};color:{DIM};padding-left:8px\">"
+                f"{JOURS[when.weekday()][:3]} {when.strftime('%d/%m')}</td>"
+                f"<td style=\"{cell};font-weight:700;color:{INK};white-space:nowrap\">"
+                f"{esc(train['heure_depart'])}"
+                f"<span style=\"color:{DIM};font-weight:400\"> &rarr; "
+                f"{esc(train.get('heure_arrivee') or '')}</span>{badge}</td>"
+                f"<td style=\"{cell};color:{DIM}\" align='right'>"
+                f"n&deg;{esc(train.get('train_no') or '')}</td>"
+                f"<td style=\"{cell};color:{DIM};padding-right:8px\" align='right'>"
+                f"{count if count is not None else '&mdash;'}</td>"
+                f"</tr>"
+            )
+        add("</table></td></tr>")
+
+    if gone:
+        add(
+            f"<tr><td style=\"background:{CARD};padding:4px 26px 20px\">"
+            f"<div style=\"font-size:14px;font-weight:700;color:{GONE_INK};padding-bottom:6px\">"
+            f"Disparues depuis le dernier passage</div>"
+            f"<div style=\"font-size:14px;line-height:1.7;color:{DIM}\">"
+            + "<br>".join(esc(v) for v in sorted(gone.values()))
+            + "</div></td></tr>"
+        )
+
+    add(
+        f"<tr><td style=\"background:{CARD};padding:4px 26px 22px;border-top:1px solid {LINE}\">"
+        f"<div style=\"font-size:14px;font-weight:700;color:{INK};padding:14px 0 6px\">"
+        f"Habitude de ces trajets</div>"
+        f"<div style=\"font-size:14px;line-height:1.7;color:{DIM}\">"
+        + "<br>".join(
+            f"{esc(name)} &middot; {esc(trend(history.get(name, [])))}"
+            for name in sorted(r["name"] for r in cfg["watch"])
+        )
+        + "</div></td></tr>"
+    )
+
+    add(
+        f"<tr><td style=\"background:{CARD};padding:0 26px 26px\">"
+        f"<a href='https://www.sncf-connect.com/' "
+        f"style=\"display:inline-block;background:{ACCENT};color:#ffffff;text-decoration:none;"
+        f"padding:12px 22px;border-radius:10px;font-size:14px;font-weight:700\">"
+        f"Réserver sur SNCF Connect</a></td></tr>"
+    )
+
+    add(
+        f"<tr><td style=\"background:{CARD};border-radius:0 0 16px 16px;padding:16px 26px 22px;"
+        f"border-top:1px solid {LINE};font-size:12px;color:{DIM}\">"
+        f"Export du dataset : {esc(dataset_timestamp() or 'inconnu')}.<br>"
+        f"Source : open data SNCF « tgvmax ». Un envoi par jour, après l'export."
+        f"</td></tr>"
+    )
+
+    add("</table></td></tr></table></body></html>")
+    return "\n".join(out)
+
+
+def headline(total: int, new: int, gone: int, tight: int) -> str:
+    """Le titre doit tenir sur l'ecran de veille : le total, puis ce qui a bouge."""
+    parts = [f"{total} place(s) MAX"]
+    if new:
+        parts.append(f"+{new}")
+    if gone:
+        parts.append(f"-{gone}")
+    if tight:
+        parts.append(f"{tight} en tension")
+    return "TGVmax : " + " · ".join(parts)
+
+
 def main() -> int:
     if "--historique" in sys.argv[1:]:
         return show_history()
@@ -416,6 +793,7 @@ def main() -> int:
                 matched.append((entry_key, rule, train))
 
     if errors:
+        # Un bulletin partiel serait pris pour l'etat reel du trajet manquant.
         ping_healthcheck(cfg, "/fail")
         print("ERREUR: " + "; ".join(errors), file=sys.stderr)
         return 1
@@ -423,75 +801,35 @@ def main() -> int:
     today = dt.date.today().isoformat()
     # Une date passee disparait de la fenetre glissante : ce n'est pas une perte.
     gone = {
-        k: v
-        for k, v in previous.items()
-        if k not in current and k.split("|")[1] >= today
+        k: v for k, v in previous.items() if k not in current and k.split("|")[1] >= today
     }
     new = {k: v for k, v in current.items() if k not in previous}
     seats, tight = tightening(cfg, matched, previous_seats)
     history = update_history(history, observations(matched, seats), today, cfg["watch"])
 
-    if new or gone or tight:
-        lines = []
-        if new:
-            lines.append("PLACES MAX OUVERTES :")
-            lines += [f"  + {v}" for v in sorted(new.values())]
-        if gone:
-            if lines:
-                lines.append("")
-            lines.append("PLACES DISPARUES :")
-            lines += [f"  - {v}" for v in sorted(gone.values())]
-        if tight:
-            if lines:
-                lines.append("")
-            lines.append("PLACES QUI SE RARÉFIENT :")
-            lines += [
-                f"  ! {current[k]} · {n} place(s) restante(s)"
-                for k, n in sorted(tight.items(), key=lambda kv: (kv[1], current[kv[0]]))
-            ]
-        # Une ouverture ne dit pas si elle est banale ou exceptionnelle sur ce
-        # trajet. L'historique repond a la question sans qu'on ait a la poser.
-        lines.append("")
-        lines.append("HABITUDE DE CES TRAJETS :")
-        lines += [
-            f"  {name} · {trend(history.get(name, []))}"
-            for name in sorted(rule["name"] for rule in cfg["watch"])
-        ]
-        lines.append("")
-        lines.append(f"Export du dataset : {dataset_timestamp() or 'inconnu'}")
-        lines.append("Reserver : https://www.sncf-connect.com/")
-        body = "\n".join(lines)
-
-        title = []
-        if new:
-            title.append(f"{len(new)} place(s) MAX")
-        if gone:
-            title.append(f"{len(gone)} perdue(s)")
-        if tight:
-            title.append(f"{len(tight)} en tension")
-        title = "TGVmax : " + ", ".join(title)
-
-        try:
-            notify_ntfy(
-                cfg,
-                title,
-                body,
-                # Un train qui se vide se reserve le jour meme : c'est aussi
-                # urgent qu'une place qui s'ouvre.
-                priority="high" if new or tight else "default",
-                tags="steam_locomotive" if new else ("hourglass" if tight else "warning"),
-            )
-        except Exception as exc:
-            print(f"ntfy KO: {exc}", file=sys.stderr)
-        try:
-            notify_mail(cfg, title, body)
-        except Exception as exc:
-            print(f"mail KO: {exc}", file=sys.stderr)
-        print(body)
-    else:
-        print(f"Aucun changement ({len(current)} place(s) suivie(s)).")
-        for name in sorted(rule["name"] for rule in cfg["watch"]):
-            print(f"  {name} · {trend(history.get(name, []))}")
+    body = render(cfg, matched, previous, gone, seats, tight, history)
+    title = headline(len(current), len(new), len(gone), len(tight))
+    notify_ntfy(
+        cfg,
+        title,
+        render_compact(cfg, matched, previous, gone, tight),
+        # Le bulletin part tous les jours : le reserver a « high » les jours ou
+        # quelque chose s'ouvre ou se vide, sinon la priorite ne veut plus rien
+        # dire au bout d'une semaine.
+        priority="high" if new or tight else "default",
+        tags="steam_locomotive" if new else ("hourglass" if tight else "calendar"),
+    )
+    try:
+        notify_mail(
+            cfg,
+            title,
+            body,
+            render_mail_html(cfg, matched, previous, gone, seats, tight, history),
+        )
+    except Exception as exc:
+        print(f"mail KO: {exc}", file=sys.stderr)
+    print(title)
+    print(body)
 
     STATE.write_text(
         json.dumps(
