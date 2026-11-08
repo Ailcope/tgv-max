@@ -51,17 +51,23 @@ async function ensurePage() {
   if (page && !page.isClosed()) return page;
   log("ouverture d'une session MAX Planner");
   const browser = await firefox.launch({ headless: true });
-  const ctx = await browser.newContext({
-    locale: "fr-FR",
-    timezoneId: "Europe/Paris",
-    viewport: { width: 1280, height: 900 },
-  });
-  const p = await ctx.newPage();
-  await p.goto(PLANNER, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  // Le challenge anti-bot se résout en arrière-plan, il lui faut ces secondes.
-  await p.waitForTimeout(6000);
-  page = p;
-  return p;
+  try {
+    const ctx = await browser.newContext({
+      locale: "fr-FR",
+      timezoneId: "Europe/Paris",
+      viewport: { width: 1280, height: 900 },
+    });
+    const p = await ctx.newPage();
+    await p.goto(PLANNER, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    // Le challenge anti-bot se résout en arrière-plan, il lui faut ces secondes.
+    await p.waitForTimeout(6000);
+    page = p;
+    return p;
+  } catch (err) {
+    // Sans cela, chaque échec laisse un Firefox ouvert derrière lui.
+    await browser.close().catch(() => {});
+    throw err;
+  }
 }
 
 /** Un appel au service, depuis le contexte de la page. */

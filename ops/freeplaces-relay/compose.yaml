@@ -1,0 +1,29 @@
+# Relais « places libres » sur le CT 211 (pve1). Voir README.md, section « En production ».
+name: tgvmax-relay
+
+services:
+  fp-relay:
+    # Même version que la dépendance playwright de package.json : l'image porte
+    # le Firefox (firefox-1495) que cette version sait lancer.
+    image: mcr.microsoft.com/playwright:v1.56.0-noble
+    container_name: fp-relay
+    restart: unless-stopped
+    # Réseau de l'hôte : l'écoute se fait sur l'IP LAN du CT, le pare-feu PVE
+    # (211.fw) n'ouvre 8099 qu'au CT 206.
+    network_mode: host
+    working_dir: /app
+    environment:
+      HOST: 192.168.1.211
+      PORT: "8099"
+      TTL_MINUTES: "20"
+    volumes:
+      - ./:/app:ro
+    # Firefox peut laisser un lien « lock » orphelin dans son dossier
+    # d'installation ; Playwright refuse alors de le lancer (ENOENT, panne du
+    # 23/10/2026 au 08/11/2026). On le retire à chaque démarrage.
+    command:
+      - sh
+      - -c
+      - rm -f /ms-playwright/firefox-*/firefox/lock /ms-playwright/firefox-*/firefox/.parentlock; exec node relay.js
+    mem_limit: 768m
+    pids_limit: 256
