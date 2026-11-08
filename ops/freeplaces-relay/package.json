@@ -8,6 +8,6 @@
     "start": "node relay.js"
   },
   "dependencies": {
-    "playwright": "^1.56.0"
+    "playwright": "1.56.0"
   }
 }

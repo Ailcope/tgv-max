@@ -52,6 +52,36 @@ VITE_FREEPLACES_RELAY=https://relais.exemple.fr npm run build
 Variables : `PORT`, `HOST`, `ALLOW_ORIGIN` (par défaut `*`, à restreindre au
 domaine du site en production), `TTL_MINUTES`.
 
+## En production (pve1, CT 211)
+
+1. Où : CT 211 (`browser`, 192.168.1.211). Clone HTTPS du dépôt dans
+   `/opt/tgv-max`, branche `deploy/ailcope`. Conteneur `fp-relay` lancé par
+   `compose.yaml` (projet `tgvmax-relay`, image
+   `mcr.microsoft.com/playwright:v1.56.0-noble`, réseau de l'hôte, écoute sur
+   `192.168.1.211:8099`).
+2. Clients, tous sur le CT 206 (192.168.1.209) :
+   - `ops/watch.py` (`freeplaces.relay_url` = `http://192.168.1.211:8099`) ;
+   - le site, par le nginx du conteneur `tgvmax` (`location /freeplaces/`).
+3. Pare-feu : `/etc/pve/firewall/211.fw` sur pve1 n'ouvre 8099 qu'à
+   `192.168.1.209`.
+4. Déployer ou mettre à jour, en root sur le CT 211 :
+
+   ```sh
+   cd /opt/tgv-max && git pull --ff-only
+   cd ops/freeplaces-relay
+   docker run --rm -v "$PWD":/app -w /app mcr.microsoft.com/playwright:v1.56.0-noble npm ci --omit=dev
+   docker compose up -d --force-recreate
+   ```
+
+5. Contrôler :
+   - `curl -s http://192.168.1.211:8099/health` doit rendre `{"healthy":true,...}` ;
+   - depuis le CT 206, une recherche (`/search-freeplaces-proposals?origin=FRRHE&destination=FRXSW&departureDateTime=AAAA-MM-JJ`) doit rendre 200.
+6. Monter la version de Playwright : changer en même temps `package.json`,
+   `package-lock.json` et l'image de `compose.yaml`. Le Firefox de l'image doit
+   être celui que la bibliothèque attend.
+7. Journal : `docker logs fp-relay`. « ENOENT ... firefox/lock » = verrou
+   orphelin ; `docker compose up -d --force-recreate` le retire.
+
 ## Format
 
 Le relais est transparent : il rend la réponse du service telle quelle.
